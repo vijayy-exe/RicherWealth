@@ -184,7 +184,7 @@ See [`RicherWealth_Phase_Build_Prompts.md`](RicherWealth_Phase_Build_Prompts.md)
 | Phase | Name | Status |
 |---|---|---|
 | **0** | Architecture & Monorepo | ✅ Done |
-| 1 | Auth & Core Infrastructure | ✅ Done (MFA secret encryption + passkey registration ceremony outstanding — see `STATUS.md`) |
+| 1 | Auth & Core Infrastructure | ✅ Done |
 | 2 | Dashboard & Net Worth Engine | ✅ Done (emergency-fund calc uses a Phase 10 placeholder divisor) |
 | 3 | Manual Asset & Liability Entry | ✅ Done |
 | 4 | Stocks & Live Market Data | ✅ Done |

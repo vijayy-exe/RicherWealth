@@ -9,8 +9,19 @@ import { ConfigService } from "@nestjs/config";
 import type { Prisma } from "@prisma/client";
 import * as speakeasy from "speakeasy";
 import * as QRCode from "qrcode";
+import {
+  generateRegistrationOptions,
+  verifyRegistrationResponse,
+} from "@simplewebauthn/server";
+import type {
+  RegistrationResponseJSON,
+  PublicKeyCredentialCreationOptionsJSON,
+  AuthenticatorTransportFuture,
+} from "@simplewebauthn/server";
 
 import { PrismaService } from "../prisma/prisma.service";
+import { encryptSecret, decryptSecret } from "./crypto.util";
+import { PasskeyChallengeStore } from "./passkey-challenge.store";
 import type {
   SyncUserDto,
   UpdateProfileDto,
@@ -34,6 +45,7 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly passkeyChallenges: PasskeyChallengeStore,
   ) {}
 
   // ─── User sync ────────────────────────────────────────────────────────────
@@ -181,9 +193,18 @@ export class AuthService {
     };
   }
 
+  /** Reads the MFA encryption key from config, failing fast if unset. */
+  private getMfaEncryptionKey(): string {
+    const key = this.config.get<string>("MFA_ENCRYPTION_KEY");
+    if (!key) {
+      throw new Error("MFA_ENCRYPTION_KEY is not configured");
+    }
+    return key;
+  }
+
   /**
-   * Verifies the TOTP token and, if valid, activates MFA by storing the secret.
-   * NOTE: In production, encrypt mfaTotpSecret before storing.
+   * Verifies the TOTP token and, if valid, activates MFA by storing the
+   * secret encrypted at rest (AES-256-GCM, see crypto.util.ts).
    */
   async enableTotp(userId: string, secret: string, token: string): Promise<boolean> {
     const verified = speakeasy.totp.verify({
@@ -195,10 +216,12 @@ export class AuthService {
 
     if (!verified) throw new BadRequestException("Invalid TOTP code");
 
+    const encryptedSecret = encryptSecret(secret, this.getMfaEncryptionKey());
+
     await this.prisma.user.update({
       where: { id: userId },
       data: {
-        mfaTotpSecret: secret, // TODO: encrypt with AES-256 before storing
+        mfaTotpSecret: encryptedSecret,
         mfaEnabled: true,
       },
     });
@@ -211,8 +234,10 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user?.mfaTotpSecret) throw new BadRequestException("MFA not configured");
 
+    const secret = decryptSecret(user.mfaTotpSecret, this.getMfaEncryptionKey());
+
     return speakeasy.totp.verify({
-      secret: user.mfaTotpSecret,
+      secret,
       encoding: "base32",
       token,
       window: 1,
@@ -231,6 +256,85 @@ export class AuthService {
   }
 
   // ─── Passkeys ─────────────────────────────────────────────────────────────
+
+  /** RP ID (domain) WebAuthn ceremonies are scoped to. Defaults to local dev. */
+  private getRpId(): string {
+    return this.config.get<string>("WEBAUTHN_RP_ID") ?? "localhost";
+  }
+
+  /** Origin the browser must report during ceremonies. Defaults to local dev. */
+  private getRpOrigin(): string {
+    return this.config.get<string>("WEBAUTHN_RP_ORIGIN") ?? "http://localhost:3000";
+  }
+
+  async generatePasskeyRegistrationOptions(
+    userId: string,
+    email: string,
+  ): Promise<PublicKeyCredentialCreationOptionsJSON> {
+    const existing = await this.prisma.passkey.findMany({
+      where: { userId },
+      select: { credentialId: true, transports: true },
+    });
+
+    const options = await generateRegistrationOptions({
+      rpName: "RicherWealth",
+      rpID: this.getRpId(),
+      userName: email,
+      userID: new TextEncoder().encode(userId),
+      attestationType: "none",
+      excludeCredentials: existing.map((pk) => ({
+        id: pk.credentialId,
+        transports: pk.transports as AuthenticatorTransportFuture[],
+      })),
+      authenticatorSelection: {
+        residentKey: "preferred",
+        userVerification: "preferred",
+      },
+    });
+
+    this.passkeyChallenges.set(userId, options.challenge);
+    return options;
+  }
+
+  async verifyPasskeyRegistration(
+    userId: string,
+    response: RegistrationResponseJSON,
+    name?: string,
+  ) {
+    const expectedChallenge = this.passkeyChallenges.take(userId);
+    if (!expectedChallenge) {
+      throw new BadRequestException("Registration challenge expired or not found — please retry");
+    }
+
+    const verification = await verifyRegistrationResponse({
+      response,
+      expectedChallenge,
+      expectedOrigin: this.getRpOrigin(),
+      expectedRPID: this.getRpId(),
+    });
+
+    if (!verification.verified || !verification.registrationInfo) {
+      throw new BadRequestException("Passkey registration could not be verified");
+    }
+
+    const { credential, credentialDeviceType, credentialBackedUp } = verification.registrationInfo;
+
+    const passkey = await this.prisma.passkey.create({
+      data: {
+        userId,
+        credentialId: credential.id,
+        publicKey: Buffer.from(credential.publicKey).toString("base64url"),
+        counter: credential.counter,
+        deviceType: credentialDeviceType === "singleDevice" ? "SINGLE_DEVICE" : "MULTI_DEVICE",
+        backedUp: credentialBackedUp,
+        transports: credential.transports ?? [],
+        name: name ?? "My Passkey",
+      },
+    });
+
+    this.logger.log(`Passkey registered for user ${userId}`);
+    return { id: passkey.id, name: passkey.name };
+  }
 
   async listPasskeys(userId: string) {
     return this.prisma.passkey.findMany({

@@ -1,9 +1,13 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { ConfigService } from "@nestjs/config";
 import { BadRequestException } from "@nestjs/common";
+import * as speakeasy from "speakeasy";
 
 import { AuthService } from "./auth.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { PasskeyChallengeStore } from "./passkey-challenge.store";
+
+const TEST_MFA_KEY = "0".repeat(64); // dummy 32-byte hex key, test-only
 
 // Mock PrismaService
 const mockPrisma = {
@@ -32,6 +36,7 @@ const mockConfig = {
     const map: Record<string, string> = {
       SUPABASE_URL: "https://example.supabase.co",
       SUPABASE_SERVICE_ROLE_KEY: "test-key",
+      MFA_ENCRYPTION_KEY: TEST_MFA_KEY,
     };
     return map[key] ?? null;
   }),
@@ -46,6 +51,7 @@ describe("AuthService", () => {
         AuthService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: ConfigService, useValue: mockConfig },
+        PasskeyChallengeStore,
       ],
     }).compile();
 
@@ -143,6 +149,76 @@ describe("AuthService", () => {
     it("throws BadRequestException for an invalid TOTP token", async () => {
       await expect(
         service.enableTotp("cld_1", "INVALIDSECRET", "000000"),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it("stores the TOTP secret encrypted, not in plaintext", async () => {
+      const secret = speakeasy.generateSecret({ length: 32 }).base32;
+      const token = speakeasy.totp({ secret, encoding: "base32" });
+      mockPrisma.user.update.mockResolvedValue({ id: "cld_1" });
+
+      await service.enableTotp("cld_1", secret, token);
+
+      const storedSecret = mockPrisma.user.update.mock.calls[0][0].data.mfaTotpSecret;
+      expect(storedSecret).not.toBe(secret);
+      expect(storedSecret).toMatch(/^[0-9a-f]+:[0-9a-f]+:[0-9a-f]+$/);
+    });
+  });
+
+  describe("verifyTotp", () => {
+    it("decrypts the stored secret and verifies a valid token", async () => {
+      const secret = speakeasy.generateSecret({ length: 32 }).base32;
+      const token = speakeasy.totp({ secret, encoding: "base32" });
+      mockPrisma.user.update.mockResolvedValue({ id: "cld_1" });
+
+      await service.enableTotp("cld_1", secret, token);
+      const encryptedSecret = mockPrisma.user.update.mock.calls[0][0].data.mfaTotpSecret;
+      mockPrisma.user.findUnique.mockResolvedValue({ mfaTotpSecret: encryptedSecret });
+
+      const freshToken = speakeasy.totp({ secret, encoding: "base32" });
+      const verified = await service.verifyTotp("cld_1", freshToken);
+
+      expect(verified).toBe(true);
+    });
+
+    it("throws BadRequestException when MFA is not configured", async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({ mfaTotpSecret: null });
+
+      await expect(service.verifyTotp("cld_1", "000000")).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+  });
+
+  // ─── Passkey registration ceremony ────────────────────────────────────────
+
+  describe("generatePasskeyRegistrationOptions", () => {
+    it("returns creation options and excludes the user's existing credentials", async () => {
+      mockPrisma.passkey.findMany.mockResolvedValue([
+        { credentialId: "existing-cred-id", transports: ["internal"] },
+      ]);
+
+      const options = await service.generatePasskeyRegistrationOptions(
+        "cld_1",
+        "test@example.com",
+      );
+
+      expect(options.rp.name).toBe("RicherWealth");
+      expect(options.user.name).toBe("test@example.com");
+      expect(options.excludeCredentials).toEqual([
+        expect.objectContaining({ id: "existing-cred-id", transports: ["internal"] }),
+      ]);
+      expect(options.challenge).toBeTruthy();
+    });
+  });
+
+  describe("verifyPasskeyRegistration", () => {
+    it("throws BadRequestException when no challenge was issued (expired/missing)", async () => {
+      await expect(
+        service.verifyPasskeyRegistration(
+          "cld_never_started_registration",
+          {} as never,
+        ),
       ).rejects.toThrow(BadRequestException);
     });
   });

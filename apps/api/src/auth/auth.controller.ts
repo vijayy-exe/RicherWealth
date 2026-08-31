@@ -12,6 +12,7 @@ import {
   Req,
 } from "@nestjs/common";
 import type { Request } from "express";
+import type { RegistrationResponseJSON } from "@simplewebauthn/server";
 
 import { AuthService } from "./auth.service";
 import { SupabaseAuthGuard } from "./guards/supabase-auth.guard";
@@ -167,6 +168,30 @@ export class AuthController {
   }
 
   // ─── Passkeys ─────────────────────────────────────────────────────────────
+
+  /**
+   * POST /api/auth/passkeys/register/options
+   * Returns WebAuthn registration options for navigator.credentials.create().
+   */
+  @Post("passkeys/register/options")
+  @UseGuards(SupabaseAuthGuard)
+  async getPasskeyRegistrationOptions(@CurrentUser() user: UserWithRelations) {
+    return this.authService.generatePasskeyRegistrationOptions(user.id, user.email);
+  }
+
+  /**
+   * POST /api/auth/passkeys/register/verify
+   * Verifies the browser's registration response and persists the passkey.
+   */
+  @Post("passkeys/register/verify")
+  @UseGuards(SupabaseAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async verifyPasskeyRegistration(
+    @CurrentUser() user: UserWithRelations,
+    @Body() body: { response: RegistrationResponseJSON; name?: string },
+  ) {
+    return this.authService.verifyPasskeyRegistration(user.id, body.response, body.name);
+  }
 
   @Get("passkeys")
   @UseGuards(SupabaseAuthGuard)

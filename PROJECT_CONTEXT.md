@@ -60,4 +60,4 @@ UI QUALITY BAR (applies to every phase from here forward):
   entrance transitions, smooth number count-ups, no gratuitous bouncing.
 - Every new page/component must work in both dark and light mode from the
   moment it's built, not patched in later.
-CURRENT PHASE: Phase 4 complete (Stocks & Global Market Data Integration) — Phase 5 (Mutual Funds, ETFs & Bonds) is next. See STATUS.md for the full phase-by-phase review, including outstanding gaps carried over from Phase 1 (MFA secret encryption, WebAuthn passkey ceremony) and Phase 2 (emergency-fund placeholder calc).
+CURRENT PHASE: Phase 4 complete (Stocks & Global Market Data Integration) — Phase 5 (Mutual Funds, ETFs & Bonds) is next. Phase 1's MFA secret encryption and WebAuthn passkey registration ceremony gaps are now closed (see STATUS.md). Phase 2's emergency-fund placeholder calc remains a known, intentional deferral to Phase 10.

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Shield, ShieldAlert, Key, LogOut } from "lucide-react";
 
 import { useUser, authFetch } from "@/hooks/useUser";
+import { usePasskeys, useRegisterPasskey, useDeletePasskey } from "@/hooks/usePasskeys";
 import { Button, Card, Badge, Input } from "@richer/ui";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
@@ -13,6 +14,20 @@ export default function SettingsPage() {
   const router = useRouter();
   const supabase = createClient();
   const [activeTab, setActiveTab] = useState<"profile" | "security" | "preferences">("profile");
+
+  const { data: passkeys } = usePasskeys();
+  const registerPasskey = useRegisterPasskey();
+  const deletePasskey = useDeletePasskey();
+  const [passkeyError, setPasskeyError] = useState<string | null>(null);
+
+  const handleRegisterPasskey = async () => {
+    setPasskeyError(null);
+    try {
+      await registerPasskey.mutateAsync(undefined);
+    } catch (err) {
+      setPasskeyError(err instanceof Error ? err.message : "Failed to register passkey");
+    }
+  };
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -104,8 +119,48 @@ export default function SettingsPage() {
                   </div>
                   <Key className="text-[var(--color-accent)]" size={32} />
                 </div>
+
+                {passkeys && passkeys.length > 0 && (
+                  <div className="flex flex-col gap-2">
+                    {passkeys.map((pk) => (
+                      <div
+                        key={pk.id}
+                        className="flex items-center justify-between px-3 py-2 rounded-[var(--radius-sm)] bg-[var(--color-bg-card)] border border-[var(--color-border-subtle)]"
+                      >
+                        <div>
+                          <p className="text-sm font-medium">{pk.name}</p>
+                          <p className="text-xs text-[var(--color-text-muted)]">
+                            {pk.lastUsedAt
+                              ? `Last used ${new Date(pk.lastUsedAt).toLocaleDateString()}`
+                              : `Added ${new Date(pk.createdAt).toLocaleDateString()}`}
+                          </p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => void deletePasskey.mutate(pk.id)}
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {passkeyError && (
+                  <p role="alert" className="text-sm text-[var(--color-loss)]">
+                    {passkeyError}
+                  </p>
+                )}
+
                 <div>
-                  <Button variant="outline">Register new passkey</Button>
+                  <Button
+                    variant="outline"
+                    isLoading={registerPasskey.isPending}
+                    onClick={() => void handleRegisterPasskey()}
+                  >
+                    Register new passkey
+                  </Button>
                 </div>
               </Card>
             </div>
