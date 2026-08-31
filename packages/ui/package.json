@@ -1,0 +1,36 @@
+{
+  "name": "@richer/ui",
+  "version": "0.0.0",
+  "private": true,
+  "description": "RicherWealth shared UI component library — shadcn/ui-based glassmorphism components",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs --dts --clean --external react",
+    "dev": "tsup src/index.ts --format esm,cjs --dts --watch --external react",
+    "lint": "eslint \"src/**/*.ts\" \"src/**/*.tsx\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^3.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "tsup": "^8.4.0",
+    "typescript": "^5.8.3"
+  }
+}

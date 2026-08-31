@@ -1,0 +1,35 @@
+# ------------------------------------------------------
+# THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
+# ------------------------------------------------------
+
+type AllocationItemType {
+  category: String!
+  percentage: Float!
+  valueInBase: Float!
+}
+
+type DashboardSummaryType {
+  assetAllocation: [AllocationItemType!]!
+  baseCurrency: String!
+  debtRatio: Float!
+  emergencyFundHealth: Float!
+  hasAssets: Boolean!
+  monthChangeAbs: Float!
+  monthChangePct: Float!
+  snapshots: [SnapshotPointType!]!
+  todayChangeAbs: Float!
+  todayChangePct: Float!
+  totalNetWorth: Float!
+  yearChangeAbs: Float!
+  yearChangePct: Float!
+}
+
+type Query {
+  """Full dashboard summary for the current user"""
+  dashboardSummary: DashboardSummaryType!
+}
+
+type SnapshotPointType {
+  date: String!
+  netWorth: Float!
+}

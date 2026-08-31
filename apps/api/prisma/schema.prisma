@@ -1,0 +1,372 @@
+// RicherWealth Prisma Schema — Phase 1: Auth & Core Infrastructure
+// Conventions:
+//   - UUIDs for all primary keys (cuid for URL-safety)
+//   - All monetary values store an explicit currencyCode; never convert at write-time
+//   - JSONB `details` column on Asset/Liability for type-specific fields
+//   - Soft-delete pattern: deletedAt timestamp, never hard-delete financial records
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pg_trgm, uuidOssp(map: "uuid-ossp")]
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+/// Asset top-level category discriminator
+enum AssetType {
+  CASH
+  FIXED_DEPOSIT
+  STOCK
+  MUTUAL_FUND
+  ETF
+  BOND
+  CRYPTO
+  GOLD
+  SILVER
+  COMMODITY
+  REAL_ESTATE
+  VEHICLE
+  COLLECTIBLE
+  NFT
+  BUSINESS_EQUITY
+  PRIVATE_EQUITY
+  ANGEL_INVESTMENT
+  REIT
+  P2P_LENDING
+  RETIREMENT_ACCOUNT
+  INSURANCE
+  FOREX
+  OTHER
+}
+
+/// Liability type discriminator
+enum LiabilityType {
+  MORTGAGE
+  CAR_LOAN
+  EDUCATION_LOAN
+  PERSONAL_LOAN
+  CREDIT_CARD
+  OTHER
+}
+
+/// Household role for RBAC
+enum HouseholdRole {
+  OWNER
+  MEMBER
+  VIEWER
+}
+
+/// Passkey/authenticator device type
+enum PasskeyDeviceType {
+  SINGLE_DEVICE
+  MULTI_DEVICE
+}
+
+// ─── Core Models ──────────────────────────────────────────────────────────────
+
+/// Platform user — synced from Supabase Auth on first login
+model User {
+  id                  String    @id @default(cuid())
+  /// Supabase auth UID — links JWT sub claim to this row
+  supabaseId          String    @unique
+  email               String    @unique
+  name                String?
+  avatarUrl           String?
+  baseCurrency        String    @default("USD")   // ISO 4217
+  mfaEnabled          Boolean   @default(false)
+  /// TOTP secret (encrypted at application layer before storing)
+  mfaTotpSecret       String?
+  onboardingCompleted Boolean   @default(false)
+  /// Stores the "what do you want to track" quick-pick selections
+  trackingPreferences Json      @default("[]")
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  deletedAt           DateTime?
+
+  // Relations
+  assets               Asset[]
+  liabilities          Liability[]
+  transactions         Transaction[]
+  householdMemberships HouseholdMember[]
+  sessions             Session[]
+  passkeys             Passkey[]
+  netWorthSnapshots    NetWorthSnapshot[]
+  stockHoldings        StockHolding[]
+  watchlists           Watchlist[]
+
+  @@index([email])
+  @@index([supabaseId])
+  @@map("users")
+}
+
+/// Active user session — tracked so users can revoke them
+model Session {
+  id          String    @id @default(cuid())
+  userId      String
+  /// Supabase session ID for cross-reference
+  supabaseSessionId String?  @unique
+  deviceName  String?   // e.g. "Chrome on macOS"
+  deviceType  String?   // "desktop" | "mobile" | "tablet"
+  ipAddress   String?
+  userAgent   String?
+  lastSeenAt  DateTime  @default(now())
+  expiresAt   DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([revokedAt])
+  @@map("sessions")
+}
+
+/// WebAuthn passkey credential
+model Passkey {
+  id             String           @id @default(cuid())
+  userId         String
+  /// Raw credential ID from WebAuthn (base64url encoded)
+  credentialId   String           @unique
+  /// COSE public key (base64url encoded)
+  publicKey      String
+  /// Signature counter — must be monotonically increasing to detect cloning
+  counter        BigInt           @default(0)
+  deviceType     PasskeyDeviceType @default(MULTI_DEVICE)
+  /// Human-readable label set by the user
+  name           String           @default("My Passkey")
+  backedUp       Boolean          @default(false)
+  transports     String[]
+  createdAt      DateTime         @default(now())
+  lastUsedAt     DateTime?
+
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("passkeys")
+}
+
+/// Family / shared household (for Family Office mode)
+model Household {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members   HouseholdMember[]
+
+  @@map("households")
+}
+
+/// Junction: user ↔ household with role
+model HouseholdMember {
+  id          String        @id @default(cuid())
+  userId      String
+  householdId String
+  role        HouseholdRole @default(MEMBER)
+  joinedAt    DateTime      @default(now())
+
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  household   Household     @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, householdId])
+  @@map("household_members")
+}
+
+/// Generic asset record — every asset class is a row here.
+model Asset {
+  id           String    @id @default(cuid())
+  userId       String
+  type         AssetType
+  name         String
+  currentValue Decimal   @db.Decimal(20, 6)
+  currencyCode String
+  details      Json      @default("{}")
+  notes        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+  stockHolding StockHolding?
+
+  @@index([userId])
+  @@index([userId, type])
+  @@index([deletedAt])
+  @@map("assets")
+}
+
+/// Liability (loan/debt) record
+model Liability {
+  id               String        @id @default(cuid())
+  userId           String
+  type             LiabilityType
+  name             String
+  principalAmount  Decimal       @db.Decimal(20, 6)
+  remainingBalance Decimal       @db.Decimal(20, 6)
+  interestRate     Decimal       @db.Decimal(8, 4)
+  currencyCode     String
+  emiAmount        Decimal?      @db.Decimal(20, 6)
+  dueDate          DateTime?
+  startDate        DateTime?
+  maturityDate     DateTime?
+  details          Json          @default("{}")
+  notes            String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  deletedAt        DateTime?
+
+  user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions     Transaction[]
+
+  @@index([userId])
+  @@index([userId, type])
+  @@map("liabilities")
+}
+
+/// Financial transaction — append-only ledger
+model Transaction {
+  id           String   @id @default(cuid())
+  userId       String
+  assetId      String?
+  liabilityId  String?
+  type         String
+  amount       Decimal  @db.Decimal(20, 6)
+  currencyCode String
+  quantity     Decimal? @db.Decimal(20, 8)
+  pricePerUnit Decimal? @db.Decimal(20, 6)
+  date         DateTime
+  category     String?
+  merchant     String?
+  description  String?
+  source       String   @default("manual")
+  details      Json     @default("{}")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  asset        Asset?      @relation(fields: [assetId], references: [id])
+  liability    Liability?  @relation(fields: [liabilityId], references: [id])
+
+  @@index([userId])
+  @@index([userId, date])
+  @@index([userId, type])
+  @@index([assetId])
+  @@map("transactions")
+}
+
+/// Daily net-worth snapshot — written by nightly cron, used for trend charts and delta calculations
+model NetWorthSnapshot {
+  id               String   @id @default(cuid())
+  userId           String
+  totalAssets      Decimal  @db.Decimal(24, 6)
+  totalLiabilities Decimal  @db.Decimal(24, 6)
+  netWorth         Decimal  @db.Decimal(24, 6)
+  baseCurrency     String
+  snapshotDate     DateTime @db.Date  // date only — one row per user per day
+
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, snapshotDate])
+  @@index([userId, snapshotDate])
+  @@map("net_worth_snapshots")
+}
+
+/// Forex rate cache — refreshed hourly by ForexService
+model ForexRate {
+  id        String   @id @default(cuid())
+  fromCode  String   // ISO 4217
+  toCode    String   // ISO 4217
+  rate      Decimal  @db.Decimal(20, 8)
+  fetchedAt DateTime @default(now())
+
+  @@unique([fromCode, toCode])
+  @@index([fromCode, toCode])
+  @@map("forex_rates")
+}
+
+// ─── Phase 4: Stock Holdings & Price Sync ─────────────────────────────────────
+
+/// Stock holding — linked 1:1 to a generic Asset row (type=STOCK)
+/// Asset.currentValue is kept in sync whenever price updates.
+model StockHolding {
+  id           String   @id @default(cuid())
+  assetId      String   @unique            // FK → Asset
+  userId       String
+  ticker       String                      // e.g. "AAPL", "RELIANCE"
+  exchange     String                      // e.g. "NASDAQ", "NSE", "BSE", "NYSE", "LSE", "HKEX"
+  quantity     Decimal  @db.Decimal(20, 8) // supports fractional shares
+  avgBuyPrice  Decimal  @db.Decimal(20, 6)
+  currency     String                      // currency of avgBuyPrice
+  purchaseDate DateTime?
+  lastSyncAt   DateTime?                   // when price was last fetched
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  asset        Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([ticker, exchange])
+  @@map("stock_holdings")
+}
+
+/// Latest price snapshot per ticker — written by PriceSyncService
+model StockPrice {
+  id            String   @id @default(cuid())
+  ticker        String
+  exchange      String
+  price         Decimal  @db.Decimal(20, 6)
+  previousClose Decimal? @db.Decimal(20, 6)
+  dayHigh       Decimal? @db.Decimal(20, 6)
+  dayLow        Decimal? @db.Decimal(20, 6)
+  volume        BigInt?
+  pe            Decimal? @db.Decimal(12, 4) // P/E ratio from provider
+  eps           Decimal? @db.Decimal(12, 4) // Earnings per share
+  bvps          Decimal? @db.Decimal(12, 4) // Book value per share (for Graham)
+  dividendYield Decimal? @db.Decimal(8, 4)  // annual yield %
+  currency      String                       // currency of price
+  provider      String                       // "alpha_vantage" | "finnhub" | "twelve_data"
+  fetchedAt     DateTime @default(now())
+
+  @@unique([ticker, exchange])
+  @@index([ticker, exchange])
+  @@map("stock_prices")
+}
+
+/// User-created watchlist (can have multiple)
+model Watchlist {
+  id        String          @id @default(cuid())
+  userId    String
+  name      String          @default("My Watchlist")
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items     WatchlistItem[]
+
+  @@index([userId])
+  @@map("watchlists")
+}
+
+/// Individual ticker in a watchlist
+model WatchlistItem {
+  id          String    @id @default(cuid())
+  watchlistId String
+  ticker      String
+  exchange    String
+  addedAt     DateTime  @default(now())
+
+  watchlist   Watchlist @relation(fields: [watchlistId], references: [id], onDelete: Cascade)
+
+  @@unique([watchlistId, ticker, exchange])
+  @@index([watchlistId])
+  @@map("watchlist_items")
+}
+
