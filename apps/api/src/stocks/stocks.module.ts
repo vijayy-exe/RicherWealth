@@ -25,6 +25,6 @@ import { MemoryCacheService } from "./memory-cache.service";
     AnalyticsService,
     MemoryCacheService,
   ],
-  exports: [PriceSyncService, StocksService],
+  exports: [PriceSyncService, StocksService, AnalyticsService, MemoryCacheService],
 })
 export class StocksModule {}
