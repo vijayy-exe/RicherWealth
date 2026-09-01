@@ -7,6 +7,7 @@ import { useDashboard } from "@/hooks/useDashboard";
 import { useNetWorthSocket } from "@/hooks/useNetWorthSocket";
 import { SummaryCard } from "@/components/dashboard/SummaryCard";
 import { AllocationChart } from "@/components/dashboard/AllocationChart";
+import { CurrencyExposureWidget } from "@/components/dashboard/CurrencyExposureWidget";
 import { TrendChart } from "@/components/dashboard/TrendChart";
 import { EmptyState } from "@/components/dashboard/EmptyState";
 import { Spinner } from "@richer/ui";
@@ -212,6 +213,12 @@ export default function DashboardPage() {
               <TrendChart data={data.snapshots} currency={data.baseCurrency} />
             )}
           </div>
+
+          {data.currencyExposure.length > 0 && (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "1rem" }}>
+              <CurrencyExposureWidget data={data.currencyExposure} baseCurrency={data.baseCurrency} />
+            </div>
+          )}
         </>
       )}
     </div>

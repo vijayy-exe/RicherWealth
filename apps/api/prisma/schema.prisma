@@ -120,6 +120,9 @@ model User {
   // Phase 6
   cryptoHoldings       CryptoHolding[]
   cryptoPriceAlerts    CryptoPriceAlert[]
+  // Phase 7
+  preciousMetalHoldings PreciousMetalHolding[]
+  commodityHoldings     CommodityHolding[]
 
   @@index([email])
   @@index([supabaseId])
@@ -222,6 +225,9 @@ model Asset {
   bondHolding       BondHolding?
   // Phase 6
   cryptoHolding     CryptoHolding?
+  // Phase 7
+  preciousMetalHolding PreciousMetalHolding?
+  commodityHolding     CommodityHolding?
 
   @@index([userId])
   @@index([userId, type])
@@ -570,4 +576,86 @@ model CryptoPriceAlert {
   @@index([userId])
   @@index([coinId])
   @@map("crypto_price_alerts")
+}
+
+// ─── Phase 7: Precious Metals ─────────────────────────────────────────────────
+
+enum PreciousMetalType {
+  GOLD
+  SILVER
+}
+
+enum PreciousMetalSubType {
+  PHYSICAL
+  DIGITAL
+  ETF
+  JEWELLERY
+}
+
+/// Precious metal holding — linked 1:1 to an Asset row (type=GOLD or SILVER).
+/// PHYSICAL/JEWELLERY are valued by weightGrams x spot price x (purity
+/// fraction); DIGITAL/ETF are valued by quantity (units) x spot/unit price.
+model PreciousMetalHolding {
+  id           String                @id @default(cuid())
+  assetId      String                @unique
+  userId       String
+  metalType    PreciousMetalType
+  subType      PreciousMetalSubType
+  /// Weight in grams — required for PHYSICAL/JEWELLERY.
+  weightGrams  Decimal?              @db.Decimal(12, 3)
+  /// Purity as a 0-1 fraction (e.g. 0.9167 for 22K gold, 0.999 for 24K/fine
+  /// silver) — stored as a fraction (not "22K" text) so it can be used
+  /// directly in the valuation calc without a lookup table.
+  purityFraction Decimal?            @db.Decimal(5, 4)
+  /// Units held — for DIGITAL/ETF sub-types.
+  quantity     Decimal?              @db.Decimal(20, 8)
+  avgBuyPrice  Decimal               @db.Decimal(20, 6)
+  /// Jewellery-specific making-charge premium, flat amount in `currency`.
+  makingCharge Decimal?              @db.Decimal(20, 6)
+  currency     String
+  purchaseDate DateTime?             @db.Date
+  lastSyncAt   DateTime?
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+
+  asset        Asset                 @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  user         User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("precious_metal_holdings")
+}
+
+// ─── Phase 7: Commodities ─────────────────────────────────────────────────────
+
+enum CommodityType {
+  OIL
+  NATURAL_GAS
+  WHEAT
+  COFFEE
+  CORN
+  COPPER
+}
+
+/// Commodity position — linked 1:1 to an Asset row (type=COMMODITY).
+/// Priced via futures-contract quotes (see CommodityPriceSyncService);
+/// `unit` is a display label only ("barrels", "MMBtu", "bushels", "lbs").
+model CommodityHolding {
+  id            String        @id @default(cuid())
+  assetId       String        @unique
+  userId        String
+  commodityType CommodityType
+  quantity      Decimal       @db.Decimal(20, 6)
+  unit          String
+  avgBuyPrice   Decimal       @db.Decimal(20, 6)
+  currency      String
+  purchaseDate  DateTime?     @db.Date
+  lastSyncAt    DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  asset         Asset         @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("commodity_holdings")
 }

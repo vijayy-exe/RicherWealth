@@ -8,9 +8,17 @@ type AllocationItemType {
   valueInBase: Float!
 }
 
+type CurrencyExposureItemType {
+  currency: String!
+  nativeValue: Float!
+  percentage: Float!
+  valueInBase: Float!
+}
+
 type DashboardSummaryType {
   assetAllocation: [AllocationItemType!]!
   baseCurrency: String!
+  currencyExposure: [CurrencyExposureItemType!]!
   debtRatio: Float!
   emergencyFundHealth: Float!
   hasAssets: Boolean!

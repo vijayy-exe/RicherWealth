@@ -10,11 +10,19 @@ export interface NetWorthResult {
   netWorth: Decimal;
   baseCurrency: string;
   assetAllocation: AllocationItem[];
+  currencyExposure: CurrencyExposureItem[];
   debtRatio: number;
 }
 
 export interface AllocationItem {
   category: string;
+  valueInBase: number;
+  percentage: number;
+}
+
+export interface CurrencyExposureItem {
+  currency: string;
+  nativeValue: number;
   valueInBase: number;
   percentage: number;
 }
@@ -35,6 +43,7 @@ export interface DashboardSummary {
   yearChangeAbs: number;
   yearChangePct: number;
   assetAllocation: AllocationItem[];
+  currencyExposure: CurrencyExposureItem[];
   emergencyFundHealth: number;
   debtRatio: number;
   snapshots: SnapshotPoint[];
@@ -83,17 +92,21 @@ export class NetWorthService {
 
     // Convert and aggregate assets
     const allocationMap = new Map<string, Decimal>();
+    const exposureMap = new Map<string, { native: Decimal; base: Decimal }>();
     let totalAssets = new Decimal(0);
 
     for (const asset of assets) {
-      const converted = await this.forex.convert(
-        new Decimal(asset.currentValue.toString()),
-        asset.currencyCode,
-        base,
-      );
+      const nativeValue = new Decimal(asset.currentValue.toString());
+      const converted = await this.forex.convert(nativeValue, asset.currencyCode, base);
       totalAssets = totalAssets.add(converted);
+
       const existing = allocationMap.get(asset.type) ?? new Decimal(0);
       allocationMap.set(asset.type, existing.add(converted));
+
+      const exposure = exposureMap.get(asset.currencyCode) ?? { native: new Decimal(0), base: new Decimal(0) };
+      exposure.native = exposure.native.add(nativeValue);
+      exposure.base = exposure.base.add(converted);
+      exposureMap.set(asset.currencyCode, exposure);
     }
 
     // Convert and aggregate liabilities
@@ -120,11 +133,22 @@ export class NetWorthService {
     });
     assetAllocation.sort((a, b) => b.valueInBase - a.valueInBase);
 
+    const currencyExposure: CurrencyExposureItem[] = [];
+    exposureMap.forEach(({ native, base: baseValue }, currency) => {
+      currencyExposure.push({
+        currency,
+        nativeValue: native.toNumber(),
+        valueInBase: baseValue.toNumber(),
+        percentage: totalAssets.isZero() ? 0 : baseValue.div(totalAssets).mul(100).toNumber(),
+      });
+    });
+    currencyExposure.sort((a, b) => b.valueInBase - a.valueInBase);
+
     const debtRatio = totalAssets.isZero()
       ? 0
       : totalLiabilities.div(totalAssets).toNumber();
 
-    return { totalAssets, totalLiabilities, netWorth, baseCurrency: base, assetAllocation, debtRatio };
+    return { totalAssets, totalLiabilities, netWorth, baseCurrency: base, assetAllocation, currencyExposure, debtRatio };
   }
 
   // ─── Snapshots ────────────────────────────────────────────────────────────
@@ -229,6 +253,7 @@ export class NetWorthService {
       yearChangeAbs: yearDelta.absChange,
       yearChangePct: yearDelta.pctChange,
       assetAllocation: current.assetAllocation,
+      currencyExposure: current.currencyExposure,
       emergencyFundHealth,
       debtRatio: current.debtRatio,
       snapshots,

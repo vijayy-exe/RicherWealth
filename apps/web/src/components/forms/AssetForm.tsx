@@ -380,6 +380,34 @@ function MutualFundDetails({ register, errors }: DetailProps) {
   );
 }
 
+function ForexDetails({ register, errors }: DetailProps) {
+  return (
+    <div style={fieldGrid}>
+      <FormField label="Foreign Currency Held" required hint="The currency you're holding cash in" error={errors.fromCurrency?.message as string}>
+        <SelectField {...register("fromCurrency")} placeholder="Select currency" options={[
+          { value: "USD", label: "USD $" }, { value: "EUR", label: "EUR €" },
+          { value: "GBP", label: "GBP £" }, { value: "JPY", label: "JPY ¥" },
+          { value: "AUD", label: "AUD" }, { value: "SGD", label: "SGD" },
+          { value: "AED", label: "AED" }, { value: "INR", label: "INR ₹" },
+        ]} />
+      </FormField>
+      <FormField label="Home / Reference Currency" required hint="Currency the buy rate is quoted in" error={errors.toCurrency?.message as string}>
+        <SelectField {...register("toCurrency")} placeholder="Select currency" options={[
+          { value: "INR", label: "INR ₹" }, { value: "USD", label: "USD $" },
+          { value: "EUR", label: "EUR €" }, { value: "GBP", label: "GBP £" },
+          { value: "JPY", label: "JPY ¥" }, { value: "AUD", label: "AUD" },
+        ]} />
+      </FormField>
+      <FormField label="Quantity Held" required hint="Amount of foreign currency" error={errors.quantity?.message as string}>
+        <TextInput {...register("quantity", { valueAsNumber: true })} type="number" step="0.01" placeholder="0" />
+      </FormField>
+      <FormField label="Avg. Buy Rate" required hint="1 unit of foreign currency = ? reference currency" error={errors.avgRate?.message as string}>
+        <TextInput {...register("avgRate", { valueAsNumber: true })} type="number" step="0.0001" placeholder="0.0000" />
+      </FormField>
+    </div>
+  );
+}
+
 // ─── Detail form router ───────────────────────────────────────────────────────
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -401,6 +429,7 @@ function DetailFields({ type, register, errors }: DetailProps & { type: AssetTyp
       return <BusinessDetails register={register} errors={errors} />;
     case "RETIREMENT_ACCOUNT": return <RetirementDetails register={register} errors={errors} />;
     case "INSURANCE": return <InsuranceDetails register={register} errors={errors} />;
+    case "FOREX": return <ForexDetails register={register} errors={errors} />;
     default: return (
       <FormField label="Description" error={errors.description?.message as string}>
         <TextInput {...register("description")} placeholder="Describe this asset" />
@@ -476,11 +505,16 @@ export function AssetForm({ type, defaultValues, onSuccess, onBack, isLoading }:
     const { name, currentValue, currencyCode, notes, details: _d, ...rest } = data;
     const details: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(rest)) details[k] = v;
+
+    // Forex holdings are valued in the currency actually held (fromCurrency),
+    // by the quantity actually held — not the generic Step-0 value/currency
+    // fields, which are hidden for this type (see Step 0 render below).
+    const isForex = type === "FOREX";
     onSuccess({
       name: name as string,
       type,
-      currentValue: Number(currentValue),
-      currencyCode: currencyCode as string,
+      currentValue: isForex ? Number(details["quantity"]) : Number(currentValue),
+      currencyCode: isForex ? (details["fromCurrency"] as string) : (currencyCode as string),
       notes: (notes as string | undefined) ?? undefined,
       details,
     });
@@ -532,6 +566,15 @@ export function AssetForm({ type, defaultValues, onSuccess, onBack, isLoading }:
               <FormField label="Asset Name" required error={errors.name?.message as string} htmlFor="asset-name">
                 <TextInput {...register("name")} id="asset-name" placeholder={`e.g. My ${meta.label}`} />
               </FormField>
+              {type === "FOREX" ? (
+                <div style={{
+                  padding: "0.875rem 1rem", borderRadius: "var(--radius-md)",
+                  background: "var(--color-bg-input)", border: "1px solid var(--color-border-glass)",
+                  fontSize: "0.8125rem", color: "var(--color-text-muted)",
+                }}>
+                  💱 Value and currency are set from the amount held and buy rate you'll enter on the next step.
+                </div>
+              ) : (
               <div style={{ display: "grid", gridTemplateColumns: "1fr 140px", gap: 12 }}>
                 <FormField label="Current Value" required error={errors.currentValue?.message as string}>
                   <Controller
@@ -565,6 +608,7 @@ export function AssetForm({ type, defaultValues, onSuccess, onBack, isLoading }:
                   />
                 </FormField>
               </div>
+              )}
             </>
           )}
 

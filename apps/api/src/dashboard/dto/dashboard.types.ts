@@ -13,6 +13,21 @@ export class AllocationItemType {
 }
 
 @ObjectType()
+export class CurrencyExposureItemType {
+  @Field()
+  currency!: string;
+
+  @Field(() => Float)
+  nativeValue!: number;
+
+  @Field(() => Float)
+  valueInBase!: number;
+
+  @Field(() => Float)
+  percentage!: number;
+}
+
+@ObjectType()
 export class SnapshotPointType {
   @Field()
   date!: string;
@@ -46,6 +61,9 @@ export class DashboardSummaryType {
 
   @Field(() => [AllocationItemType])
   assetAllocation!: AllocationItemType[];
+
+  @Field(() => [CurrencyExposureItemType])
+  currencyExposure!: CurrencyExposureItemType[];
 
   @Field(() => Float)
   emergencyFundHealth!: number;

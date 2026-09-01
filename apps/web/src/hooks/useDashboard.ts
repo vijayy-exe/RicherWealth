@@ -24,6 +24,12 @@ const DASHBOARD_QUERY = /* GraphQL */ `
         valueInBase
         percentage
       }
+      currencyExposure {
+        currency
+        nativeValue
+        valueInBase
+        percentage
+      }
       snapshots {
         date
         netWorth
@@ -45,6 +51,7 @@ export interface DashboardSummary {
   hasAssets: boolean;
   baseCurrency: string;
   assetAllocation: Array<{ category: string; valueInBase: number; percentage: number }>;
+  currencyExposure: Array<{ currency: string; nativeValue: number; valueInBase: number; percentage: number }>;
   snapshots: Array<{ date: string; netWorth: number }>;
 }
 

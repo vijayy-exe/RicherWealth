@@ -8,6 +8,11 @@ const NAV_LINKS = [
   { href: "/assets", label: "Assets", icon: "💎" },
   { href: "/liabilities", label: "Liabilities", icon: "📋" },
   { href: "/stocks", label: "Stocks", icon: "📈" },
+  { href: "/mutual-funds", label: "Mutual Funds", icon: "🏦" },
+  { href: "/bonds", label: "Bonds", icon: "🏛️" },
+  { href: "/crypto", label: "Crypto", icon: "₿" },
+  { href: "/precious-metals", label: "Precious Metals", icon: "🥇" },
+  { href: "/commodities", label: "Commodities", icon: "🛢️" },
   { href: "/settings", label: "Settings", icon: "⚙️" },
 ];
 

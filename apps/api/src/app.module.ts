@@ -23,6 +23,9 @@ import { EtfsModule } from "./etfs/etfs.module";
 import { BondsModule } from "./bonds/bonds.module";
 // Phase 6
 import { CryptoModule } from "./crypto/crypto.module";
+// Phase 7
+import { PreciousMetalsModule } from "./precious-metals/precious-metals.module";
+import { CommoditiesModule } from "./commodities/commodities.module";
 
 @Module({
   imports: [
@@ -64,6 +67,9 @@ import { CryptoModule } from "./crypto/crypto.module";
     BondsModule,
     // Phase 6
     CryptoModule,
+    // Phase 7
+    PreciousMetalsModule,
+    CommoditiesModule,
 
     // Phase 3+
     // AssetsModule,
