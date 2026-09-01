@@ -1,8 +1,9 @@
 import { Module } from "@nestjs/common";
-import { ForexService } from "./forex.service";
+import { CurrencyService } from "./currency.service";
+import { MemoryCacheService } from "../stocks/memory-cache.service";
 
 @Module({
-  providers: [ForexService],
-  exports: [ForexService],
+  providers: [CurrencyService, MemoryCacheService],
+  exports: [CurrencyService],
 })
 export class ForexModule {}

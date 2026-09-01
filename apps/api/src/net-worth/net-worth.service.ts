@@ -1,7 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { EventEmitter2 } from "@nestjs/event-emitter";
 import { PrismaService } from "../prisma/prisma.service";
-import { ForexService } from "../forex/forex.service";
+import { CurrencyService } from "../forex/currency.service";
 import Decimal from "decimal.js";
 
 export interface NetWorthResult {
@@ -53,7 +53,7 @@ export class NetWorthService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly forex: ForexService,
+    private readonly forex: CurrencyService,
     private readonly events: EventEmitter2,
   ) {}
 

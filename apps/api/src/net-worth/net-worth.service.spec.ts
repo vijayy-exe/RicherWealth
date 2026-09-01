@@ -1,5 +1,5 @@
 /**
- * NetWorthService unit tests — deterministic with mocked Prisma and ForexService.
+ * NetWorthService unit tests — deterministic with mocked Prisma and CurrencyService.
  *
  * All monetary values in INR for clarity. FX: USD→INR = 83.5 (fallback).
  */
@@ -8,7 +8,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { EventEmitter2 } from "@nestjs/event-emitter";
 import { NetWorthService } from "./net-worth.service";
 import { PrismaService } from "../prisma/prisma.service";
-import { ForexService } from "../forex/forex.service";
+import { CurrencyService } from "../forex/currency.service";
 import Decimal from "decimal.js";
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────
@@ -23,8 +23,8 @@ const mockPrisma = {
   },
 };
 
-// ForexService: returns fixed rates (USD→INR = 83.5, same currency = 1)
-const mockForex = {
+// CurrencyService: returns fixed rates (USD→INR = 83.5, same currency = 1)
+const mockCurrency = {
   convert: jest.fn(async (amount: Decimal, from: string, to: string) => {
     if (from === to) return amount;
     if (from === "USD" && to === "INR") return amount.mul(83.5);
@@ -64,7 +64,7 @@ describe("NetWorthService", () => {
       providers: [
         NetWorthService,
         { provide: PrismaService, useValue: mockPrisma },
-        { provide: ForexService, useValue: mockForex },
+        { provide: CurrencyService, useValue: mockCurrency },
         { provide: EventEmitter2, useValue: mockEvents },
       ],
     }).compile();
