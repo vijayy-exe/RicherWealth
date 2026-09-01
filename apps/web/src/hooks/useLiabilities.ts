@@ -54,6 +54,22 @@ export function useLiabilities(type?: string) {
   });
 }
 
+export interface LiabilitiesPortfolioSummary {
+  totalOutstanding: number;
+  totalMonthlyEmi: number;
+  weightedInterestRate: number;
+  currency: string;
+  count: number;
+}
+
+export function useLiabilitiesSummary(type?: string) {
+  return useQuery({
+    queryKey: ["liabilities", "summary", type ?? "all"],
+    queryFn: () => apiFetch<LiabilitiesPortfolioSummary | null>(`/liabilities/summary${type ? `?type=${type}` : ""}`),
+    staleTime: 15_000,
+  });
+}
+
 export function useCreateLiability() {
   const qc = useQueryClient();
   return useMutation({

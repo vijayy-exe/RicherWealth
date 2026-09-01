@@ -48,6 +48,20 @@ export function useAssets(type?: string) {
   });
 }
 
+export interface AssetsPortfolioSummary {
+  totalValue: number;
+  currency: string;
+  count: number;
+}
+
+export function useAssetsSummary(type?: string) {
+  return useQuery({
+    queryKey: ["assets", "summary", type ?? "all"],
+    queryFn: () => apiFetch<AssetsPortfolioSummary | null>(`/assets/summary${type ? `?type=${type}` : ""}`),
+    staleTime: 15_000,
+  });
+}
+
 export function useAsset(id: string) {
   return useQuery({
     queryKey: ["assets", id],

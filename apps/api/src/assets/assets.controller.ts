@@ -21,6 +21,15 @@ export class AssetsController {
     return this.assetsService.findAll(user.id, type);
   }
 
+  // Must come before @Get(":id") — otherwise "summary" would be captured as :id.
+  @Get("summary")
+  getSummary(
+    @CurrentUser() user: UserWithRelations,
+    @Query("type") type?: string,
+  ) {
+    return this.assetsService.getPortfolioSummary(user.id, type);
+  }
+
   @Get(":id")
   findOne(@CurrentUser() user: UserWithRelations, @Param("id") id: string) {
     return this.assetsService.findOne(user.id, id);

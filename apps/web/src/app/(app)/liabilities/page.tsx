@@ -9,7 +9,7 @@ import "ag-grid-community/styles/ag-theme-quartz.css";
 
 import { Modal } from "@/components/ui/Modal";
 import { LiabilityForm } from "@/components/forms/LiabilityForm";
-import { useLiabilities, useCreateLiability, useDeleteLiability, type LiabilityRow } from "@/hooks/useLiabilities";
+import { useLiabilities, useLiabilitiesSummary, useCreateLiability, useDeleteLiability, type LiabilityRow, type LiabilitiesPortfolioSummary } from "@/hooks/useLiabilities";
 
 const LIABILITY_META: Record<string, { label: string; icon: string; color: string }> = {
   MORTGAGE: { label: "Mortgage", icon: "🏠", color: "#9B59B6" },
@@ -120,19 +120,20 @@ const columnDefs: ColDef<LiabilityRow>[] = [
 ];
 
 // ─── Summary header ───────────────────────────────────────────────────────────
-function LiabilitySummary({ liabilities }: { liabilities: LiabilityRow[] }) {
-  const totalOutstanding = liabilities.reduce((s, l) => s + parseFloat(l.remainingBalance), 0);
-  const totalMonthlyEmi = liabilities.reduce((s, l) => s + (l.emiAmount ? parseFloat(l.emiAmount) : 0), 0);
-  const weightedRate = liabilities.length
-    ? liabilities.reduce((s, l) => s + parseFloat(l.interestRate) * parseFloat(l.remainingBalance), 0) / totalOutstanding
-    : 0;
+// Uses the server-computed, currency-converted summary (useLiabilitiesSummary)
+// — NOT a client-side sum of raw remainingBalance/emiAmount, which is
+// silently wrong (and skews the weighted interest rate) for a user with
+// liabilities in more than one currency.
+function LiabilitySummary({ summary }: { summary: LiabilitiesPortfolioSummary | null | undefined }) {
+  const fmt = (n: number) =>
+    summary ? new Intl.NumberFormat(undefined, { style: "currency", currency: summary.currency, maximumFractionDigits: 0 }).format(n) : "—";
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
       {[
-        { label: "Total Outstanding", value: `₹${totalOutstanding.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`, color: "var(--color-loss)" },
-        { label: "Monthly EMI", value: `₹${totalMonthlyEmi.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`, color: "var(--color-warning)" },
-        { label: "Weighted Interest", value: `${weightedRate.toFixed(2)}% p.a.`, color: "var(--color-text-primary)" },
+        { label: "Total Outstanding", value: fmt(summary?.totalOutstanding ?? 0), color: "var(--color-loss)" },
+        { label: "Monthly EMI", value: fmt(summary?.totalMonthlyEmi ?? 0), color: "var(--color-warning)" },
+        { label: "Weighted Interest", value: `${(summary?.weightedInterestRate ?? 0).toFixed(2)}% p.a.`, color: "var(--color-text-primary)" },
       ].map(({ label, value, color }) => (
         <div key={label} style={{
           padding: "16px 20px",
@@ -152,6 +153,7 @@ function LiabilitySummary({ liabilities }: { liabilities: LiabilityRow[] }) {
 export default function LiabilitiesPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const { data: liabilities = [], isLoading } = useLiabilities();
+  const { data: summary } = useLiabilitiesSummary();
   const createLiability = useCreateLiability();
   const deleteLiability = useDeleteLiability();
 
@@ -210,7 +212,7 @@ export default function LiabilitiesPage() {
       </div>
 
       {/* Summary cards */}
-      {liabilities.length > 0 && <LiabilitySummary liabilities={liabilities} />}
+      {liabilities.length > 0 && <LiabilitySummary summary={summary} />}
 
       {/* Grid or empty state */}
       {isLoading ? (

@@ -18,6 +18,12 @@ export class LiabilitiesController {
     return this.liabilitiesService.findAll(user.id, type);
   }
 
+  // Must come before @Get(":id") — otherwise "summary" would be captured as :id.
+  @Get("summary")
+  getSummary(@CurrentUser() user: UserWithRelations, @Query("type") type?: string) {
+    return this.liabilitiesService.getPortfolioSummary(user.id, type);
+  }
+
   @Get(":id")
   findOne(@CurrentUser() user: UserWithRelations, @Param("id") id: string) {
     return this.liabilitiesService.findOne(user.id, id);

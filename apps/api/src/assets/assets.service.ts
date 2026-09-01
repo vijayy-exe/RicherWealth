@@ -2,8 +2,16 @@ import { Injectable, Logger, NotFoundException, ForbiddenException } from "@nest
 import { EventEmitter2 } from "@nestjs/event-emitter";
 import { PrismaService } from "../prisma/prisma.service";
 import { NetWorthService } from "../net-worth/net-worth.service";
+import { CurrencyService } from "../forex/currency.service";
 import type { CreateAssetDto, UpdateAssetDto } from "./dto/asset.dto";
 import type { Asset, Prisma } from "@prisma/client";
+import Decimal from "decimal.js";
+
+export interface AssetsPortfolioSummary {
+  totalValue: number;
+  currency: string;
+  count: number;
+}
 
 @Injectable()
 export class AssetsService {
@@ -13,7 +21,32 @@ export class AssetsService {
     private readonly prisma: PrismaService,
     private readonly netWorth: NetWorthService,
     private readonly events: EventEmitter2,
+    private readonly currency: CurrencyService,
   ) {}
+
+  /**
+   * Currency-correct total across all manually-entered assets. The
+   * (app)/assets page previously summed `currentValue` directly regardless
+   * of `currencyCode` — silently wrong for a user with assets in more than
+   * one currency. This is the same bug/fix as mutual-funds/bonds/crypto's
+   * getPortfolioSummary — see mutual-funds.service.ts's doc comment.
+   */
+  async getPortfolioSummary(userId: string, type?: string): Promise<AssetsPortfolioSummary | null> {
+    const [assets, user] = await Promise.all([
+      this.prisma.asset.findMany({
+        where: { userId, deletedAt: null, ...(type ? { type: type as Asset["type"] } : {}) },
+        select: { currentValue: true, currencyCode: true },
+      }),
+      this.prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { baseCurrency: true } }),
+    ]);
+    if (assets.length === 0) return null;
+
+    let totalValue = new Decimal(0);
+    for (const a of assets) {
+      totalValue = totalValue.add(await this.currency.convert(new Decimal(a.currentValue.toString()), a.currencyCode, user.baseCurrency));
+    }
+    return { totalValue: totalValue.toNumber(), currency: user.baseCurrency, count: assets.length };
+  }
 
   async findAll(userId: string, type?: string): Promise<Asset[]> {
     return this.prisma.asset.findMany({

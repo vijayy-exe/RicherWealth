@@ -1,8 +1,18 @@
 import { Injectable, Logger, NotFoundException, ForbiddenException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { NetWorthService } from "../net-worth/net-worth.service";
+import { CurrencyService } from "../forex/currency.service";
 import type { CreateLiabilityDto, UpdateLiabilityDto } from "./dto/liability.dto";
 import type { Liability, Prisma } from "@prisma/client";
+import Decimal from "decimal.js";
+
+export interface LiabilitiesPortfolioSummary {
+  totalOutstanding: number;
+  totalMonthlyEmi: number;
+  weightedInterestRate: number;
+  currency: string;
+  count: number;
+}
 
 @Injectable()
 export class LiabilitiesService {
@@ -11,7 +21,45 @@ export class LiabilitiesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly netWorth: NetWorthService,
+    private readonly currency: CurrencyService,
   ) {}
+
+  /**
+   * Currency-correct totals — same bug/fix as assets.service.ts's
+   * getPortfolioSummary. weightedInterestRate is weighted by each
+   * liability's balance CONVERTED to baseCurrency, not raw remainingBalance
+   * — otherwise a mixed-currency portfolio would silently skew the average.
+   */
+  async getPortfolioSummary(userId: string, type?: string): Promise<LiabilitiesPortfolioSummary | null> {
+    const [liabilities, user] = await Promise.all([
+      this.prisma.liability.findMany({
+        where: { userId, deletedAt: null, ...(type ? { type: type as Liability["type"] } : {}) },
+        select: { remainingBalance: true, emiAmount: true, interestRate: true, currencyCode: true },
+      }),
+      this.prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { baseCurrency: true } }),
+    ]);
+    if (liabilities.length === 0) return null;
+
+    let totalOutstanding = new Decimal(0);
+    let totalMonthlyEmi = new Decimal(0);
+    let weightedRateSum = new Decimal(0);
+    for (const l of liabilities) {
+      const convertedBalance = await this.currency.convert(new Decimal(l.remainingBalance.toString()), l.currencyCode, user.baseCurrency);
+      totalOutstanding = totalOutstanding.add(convertedBalance);
+      weightedRateSum = weightedRateSum.add(convertedBalance.mul(l.interestRate.toString()));
+      if (l.emiAmount) {
+        totalMonthlyEmi = totalMonthlyEmi.add(await this.currency.convert(new Decimal(l.emiAmount.toString()), l.currencyCode, user.baseCurrency));
+      }
+    }
+    const weightedInterestRate = totalOutstanding.gt(0) ? weightedRateSum.div(totalOutstanding).toNumber() : 0;
+    return {
+      totalOutstanding: totalOutstanding.toNumber(),
+      totalMonthlyEmi: totalMonthlyEmi.toNumber(),
+      weightedInterestRate,
+      currency: user.baseCurrency,
+      count: liabilities.length,
+    };
+  }
 
   async findAll(userId: string, type?: string): Promise<Liability[]> {
     return this.prisma.liability.findMany({

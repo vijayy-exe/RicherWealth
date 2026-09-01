@@ -10,7 +10,7 @@ import "ag-grid-community/styles/ag-theme-quartz.css";
 import { Modal } from "@/components/ui/Modal";
 import { AssetTypeSelector, ASSET_TYPE_META, ASSET_CATEGORIES } from "@/components/forms/AssetTypeSelector";
 import { AssetForm } from "@/components/forms/AssetForm";
-import { useAssets, useCreateAsset, useDeleteAsset, type AssetRow } from "@/hooks/useAssets";
+import { useAssets, useAssetsSummary, useCreateAsset, useDeleteAsset, type AssetRow, type AssetsPortfolioSummary } from "@/hooks/useAssets";
 import type { AssetType } from "@richer/shared-types";
 
 // ─── Tab categories ───────────────────────────────────────────────────────────
@@ -156,8 +156,11 @@ function EmptyAssets({ onAdd }: { onAdd: () => void }) {
 }
 
 // ─── Total value summary bar ──────────────────────────────────────────────────
-function TotalBar({ assets }: { assets: AssetRow[] }) {
-  const total = assets.reduce((sum, a) => sum + parseFloat(a.currentValue), 0);
+// Uses the server-computed, currency-converted summary (useAssetsSummary) —
+// NOT a client-side sum of raw currentValue, which is silently wrong for a
+// user holding assets in more than one currency (each currentValue is in
+// its own currencyCode; naively adding them together mixes units).
+function TotalBar({ count, summary }: { count: number; summary: AssetsPortfolioSummary | null | undefined }) {
   return (
     <div style={{
       padding: "12px 20px",
@@ -167,10 +170,12 @@ function TotalBar({ assets }: { assets: AssetRow[] }) {
       display: "flex", justifyContent: "space-between", alignItems: "center",
     }}>
       <span style={{ fontSize: "0.875rem", color: "var(--color-text-secondary)", fontWeight: 500 }}>
-        {assets.length} assets
+        {count} assets
       </span>
       <span style={{ fontFamily: "var(--font-mono)", fontWeight: 800, color: "var(--color-text-primary)", fontSize: "1.125rem" }}>
-        ₹{total.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+        {summary
+          ? new Intl.NumberFormat(undefined, { style: "currency", currency: summary.currency, maximumFractionDigits: 0 }).format(summary.totalValue)
+          : "—"}
       </span>
     </div>
   );
@@ -184,6 +189,7 @@ export default function AssetsPage() {
   const [search, setSearch] = useState("");
 
   const { data: assets = [], isLoading } = useAssets();
+  const { data: summary } = useAssetsSummary();
   const createAsset = useCreateAsset();
   const deleteAsset = useDeleteAsset();
 
@@ -252,7 +258,7 @@ export default function AssetsPage() {
       </div>
 
       {/* Total bar */}
-      {assets.length > 0 && <TotalBar assets={assets} />}
+      {assets.length > 0 && <TotalBar count={assets.length} summary={summary} />}
 
       {/* Category tabs */}
       <div style={{ display: "flex", gap: 4, overflowX: "auto", paddingBottom: 2 }}>
