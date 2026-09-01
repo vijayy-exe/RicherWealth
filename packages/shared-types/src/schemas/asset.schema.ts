@@ -107,21 +107,29 @@ export const StockDetailsSchema = z.object({
 /** Mutual Funds */
 export const MutualFundDetailsSchema = z.object({
   fundName: z.string().min(1, "Fund name is required"),
+  /// MFAPI.in numeric scheme code (e.g. "120503")
+  schemeCode: z.string().min(1, "Scheme code is required"),
   isin: z.string().optional(),
   units: z.number().positive("Units must be positive"),
-  nav: z.number().positive("NAV must be positive"),
+  avgNAV: z.number().positive("Avg NAV must be positive"),
+  investmentType: z.enum(["SIP", "LUMPSUM"]).default("LUMPSUM"),
   fundType: z.enum(["EQUITY", "DEBT", "HYBRID", "LIQUID", "ELSS", "INDEX", "OTHER"]).optional(),
+  expenseRatio: z.number().min(0).max(5).optional(),  // % per year
+  sipFrequency: z.enum(["MONTHLY", "QUARTERLY"]).optional(),  // only for SIP
   platform: z.string().optional(),
 });
 
 /** Bonds */
 export const BondDetailsSchema = z.object({
   issuer: z.string().min(1, "Issuer is required"),
-  bondType: z.enum(["GOVERNMENT", "CORPORATE", "MUNICIPAL", "TREASURY", "OTHER"]).default("CORPORATE"),
+  /// Phase 5: GOVT | CORPORATE | MUNICIPAL | SGB
+  bondType: z.enum(["GOVT", "CORPORATE", "MUNICIPAL", "SGB"]).default("CORPORATE"),
   faceValue: z.number().positive(),
   couponRate: z.number().min(0).max(100),
   maturityDate: z.string().min(1, "Maturity date is required"),
-  quantity: z.number().positive(),
+  quantityHeld: z.number().int().positive("Quantity must be a positive integer"),
+  purchasePrice: z.number().positive().optional(),
+  purchaseDate: z.string().optional(),
   isin: z.string().optional(),
 });
 
@@ -282,7 +290,7 @@ export const ASSET_DETAIL_SCHEMAS = {
   OTHER: z.object({ description: z.string().optional() }),
 } as const;
 
-// ─── Inferred types ───────────────────────────────────────────────────────────
+// ─── Inferred types ────────────────────────────────────────────────────────────────────
 export type Asset = z.infer<typeof AssetSchema>;
 export type CreateAssetInput = z.infer<typeof CreateAssetSchema>;
 export type UpdateAssetInput = z.infer<typeof UpdateAssetSchema>;
@@ -293,3 +301,6 @@ export type InsuranceDetails = z.infer<typeof InsuranceDetailsSchema>;
 export type RetirementDetails = z.infer<typeof RetirementDetailsSchema>;
 export type VehicleDetails = z.infer<typeof VehicleDetailsSchema>;
 export type CollectibleDetails = z.infer<typeof CollectibleDetailsSchema>;
+// Phase 5
+export type MutualFundDetails = z.infer<typeof MutualFundDetailsSchema>;
+export type BondDetails = z.infer<typeof BondDetailsSchema>;
