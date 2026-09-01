@@ -17,6 +17,12 @@ import { AssetsModule } from "./assets/assets.module";
 import { LiabilitiesModule } from "./liabilities/liabilities.module";
 import { StorageModule } from "./storage/storage.module";
 import { StocksModule } from "./stocks/stocks.module";
+// Phase 5
+import { MutualFundsModule } from "./mutual-funds/mutual-funds.module";
+import { EtfsModule } from "./etfs/etfs.module";
+import { BondsModule } from "./bonds/bonds.module";
+// Phase 6
+import { CryptoModule } from "./crypto/crypto.module";
 
 @Module({
   imports: [
@@ -52,6 +58,12 @@ import { StocksModule } from "./stocks/stocks.module";
     LiabilitiesModule,
     StorageModule,
     StocksModule,
+    // Phase 5
+    MutualFundsModule,
+    EtfsModule,
+    BondsModule,
+    // Phase 6
+    CryptoModule,
 
     // Phase 3+
     // AssetsModule,

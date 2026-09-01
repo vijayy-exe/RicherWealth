@@ -1,4 +1,4 @@
-// RicherWealth Prisma Schema — Phase 1: Auth & Core Infrastructure
+// RicherWealth Prisma Schema — Phase 5: Mutual Funds, ETFs & Bonds (extends Phase 4)
 // Conventions:
 //   - UUIDs for all primary keys (cuid for URL-safety)
 //   - All monetary values store an explicit currencyCode; never convert at write-time
@@ -17,6 +17,20 @@ datasource db {
 }
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
+
+/// Phase 5: Bond type discriminator
+enum BondType {
+  GOVT
+  CORPORATE
+  MUNICIPAL
+  SGB
+}
+
+/// Investment mode for mutual fund holdings
+enum MfInvestmentType {
+  SIP
+  LUMPSUM
+}
 
 /// Asset top-level category discriminator
 enum AssetType {
@@ -99,6 +113,13 @@ model User {
   netWorthSnapshots    NetWorthSnapshot[]
   stockHoldings        StockHolding[]
   watchlists           Watchlist[]
+  // Phase 5
+  mutualFundHoldings   MutualFundHolding[]
+  etfHoldings          EtfHolding[]
+  bondHoldings         BondHolding[]
+  // Phase 6
+  cryptoHoldings       CryptoHolding[]
+  cryptoPriceAlerts    CryptoPriceAlert[]
 
   @@index([email])
   @@index([supabaseId])
@@ -192,9 +213,15 @@ model Asset {
   updatedAt    DateTime  @updatedAt
   deletedAt    DateTime?
 
-  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  transactions Transaction[]
-  stockHolding StockHolding?
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions      Transaction[]
+  stockHolding      StockHolding?
+  // Phase 5
+  mutualFundHolding MutualFundHolding?
+  etfHolding        EtfHolding?
+  bondHolding       BondHolding?
+  // Phase 6
+  cryptoHolding     CryptoHolding?
 
   @@index([userId])
   @@index([userId, type])
@@ -370,3 +397,177 @@ model WatchlistItem {
   @@map("watchlist_items")
 }
 
+// ─── Phase 5: Mutual Funds ────────────────────────────────────────────────────
+
+/// Mutual fund holding — linked 1:1 to an Asset row (type=MUTUAL_FUND)
+/// Asset.currentValue = unitsHeld × latestNAV, kept in sync by nav-sync job.
+model MutualFundHolding {
+  id             String          @id @default(cuid())
+  assetId        String          @unique            // FK → Asset
+  userId         String
+  /// MFAPI.in scheme code (numeric string, e.g. "120503" for Axis Bluechip)
+  schemeCode     String
+  fundName       String
+  investmentType MfInvestmentType @default(LUMPSUM)
+  unitsHeld      Decimal         @db.Decimal(20, 8)
+  avgNAV         Decimal         @db.Decimal(20, 6)  // weighted avg of all purchases
+  /// Expense ratio % (user-entered or looked up; optional)
+  expenseRatio   Decimal?        @db.Decimal(6, 4)
+  isin           String?
+  lastNavSyncAt  DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  asset          Asset           @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sipInstallments SipInstallment[]
+
+  @@index([userId])
+  @@index([schemeCode])
+  @@map("mutual_fund_holdings")
+}
+
+/// Individual SIP installment — each is a distinct cash-flow for XIRR
+model SipInstallment {
+  id                  String           @id @default(cuid())
+  mutualFundHoldingId String
+  /// Amount invested in this installment (in fund currency)
+  amount              Decimal          @db.Decimal(20, 6)
+  /// Units allotted for this installment
+  units               Decimal          @db.Decimal(20, 8)
+  /// NAV at time of purchase
+  nav                 Decimal          @db.Decimal(20, 6)
+  date                DateTime         @db.Date
+  createdAt           DateTime         @default(now())
+
+  mutualFundHolding   MutualFundHolding @relation(fields: [mutualFundHoldingId], references: [id], onDelete: Cascade)
+
+  @@index([mutualFundHoldingId])
+  @@index([date])
+  @@map("sip_installments")
+}
+
+/// Historical NAV data from MFAPI.in — one row per scheme per day
+model NavHistory {
+  id         String   @id @default(cuid())
+  schemeCode String
+  date       DateTime @db.Date
+  nav        Decimal  @db.Decimal(20, 6)
+  createdAt  DateTime @default(now())
+
+  @@unique([schemeCode, date])
+  @@index([schemeCode, date])
+  @@map("nav_history")
+}
+
+// ─── Phase 5: ETFs ────────────────────────────────────────────────────────────
+
+/// ETF holding — linked 1:1 to an Asset row (type=ETF)
+/// Reuses the stock price pipeline (PriceSyncService) since ETFs trade like stocks.
+model EtfHolding {
+  id           String   @id @default(cuid())
+  assetId      String   @unique            // FK → Asset
+  userId       String
+  ticker       String                      // e.g. "NIFTYBEES", "SPY"
+  exchange     String                      // e.g. "NSE", "NASDAQ"
+  unitsHeld    Decimal  @db.Decimal(20, 8)
+  avgBuyPrice  Decimal  @db.Decimal(20, 6)
+  currency     String
+  purchaseDate DateTime?
+  lastSyncAt   DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  asset        Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([ticker, exchange])
+  @@map("etf_holdings")
+}
+
+// ─── Phase 5: Bonds ───────────────────────────────────────────────────────────
+
+/// Bond holding — linked 1:1 to an Asset row (type=BOND)
+/// currentValue = quantityHeld × faceValue (book value; market pricing deferred to Phase 6)
+model BondHolding {
+  id            String    @id @default(cuid())
+  assetId       String    @unique           // FK → Asset
+  userId        String
+  issuer        String
+  bondType      BondType  @default(CORPORATE)
+  faceValue     Decimal   @db.Decimal(20, 6)
+  couponRate    Decimal   @db.Decimal(8, 4) // annual % e.g. 7.25
+  maturityDate  DateTime  @db.Date
+  quantityHeld  Int                          // number of bonds
+  purchaseDate  DateTime? @db.Date
+  purchasePrice Decimal?  @db.Decimal(20, 6) // price paid per bond
+  isin          String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  asset         Asset     @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([maturityDate])
+  @@map("bond_holdings")
+}
+
+// ─── Phase 6: Crypto ──────────────────────────────────────────────────────────
+
+/// Crypto holding — linked 1:1 to an Asset row (type=CRYPTO).
+/// walletAddress is optional, read-only tracking metadata only — never a
+/// private key or seed phrase, and never requested/stored.
+model CryptoHolding {
+  id            String    @id @default(cuid())
+  assetId       String    @unique           // FK → Asset
+  userId        String
+  /// CoinGecko coin id, e.g. "bitcoin", "ethereum", "solana"
+  coinId        String
+  symbol        String                       // e.g. "BTC" (denormalized for display)
+  name          String                       // e.g. "Bitcoin" (denormalized for display)
+  quantity      Decimal   @db.Decimal(28, 10) // crypto needs far more decimal precision than fiat
+  avgBuyPrice   Decimal   @db.Decimal(20, 6)
+  currency      String
+  /// Public wallet address for read-only reference only (e.g. to cross-check
+  /// holdings on a block explorer). No private keys or seed phrases.
+  walletAddress String?
+  purchaseDate  DateTime? @db.Date
+  lastSyncAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  asset         Asset     @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([coinId])
+  @@map("crypto_holdings")
+}
+
+enum PriceAlertDirection {
+  ABOVE
+  BELOW
+}
+
+/// Price alert config — persisted only. Delivery (push/email/etc.) is Phase 17.
+/// Not tied to a specific holding: a user can set an alert on a coin they
+/// don't yet own.
+model CryptoPriceAlert {
+  id          String              @id @default(cuid())
+  userId      String
+  coinId      String
+  symbol      String
+  targetPrice Decimal             @db.Decimal(20, 6)
+  direction   PriceAlertDirection
+  currency    String              @default("USD")
+  triggeredAt DateTime?
+  createdAt   DateTime            @default(now())
+
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([coinId])
+  @@map("crypto_price_alerts")
+}
