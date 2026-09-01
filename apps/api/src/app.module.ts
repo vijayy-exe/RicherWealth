@@ -26,6 +26,8 @@ import { CryptoModule } from "./crypto/crypto.module";
 // Phase 7
 import { PreciousMetalsModule } from "./precious-metals/precious-metals.module";
 import { CommoditiesModule } from "./commodities/commodities.module";
+// Phase 8
+import { RealEstateModule } from "./real-estate/real-estate.module";
 
 @Module({
   imports: [
@@ -70,6 +72,8 @@ import { CommoditiesModule } from "./commodities/commodities.module";
     // Phase 7
     PreciousMetalsModule,
     CommoditiesModule,
+    // Phase 8
+    RealEstateModule,
 
     // Phase 3+
     // AssetsModule,

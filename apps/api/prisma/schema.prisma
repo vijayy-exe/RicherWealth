@@ -123,6 +123,9 @@ model User {
   // Phase 7
   preciousMetalHoldings PreciousMetalHolding[]
   commodityHoldings     CommodityHolding[]
+  // Phase 8
+  realEstateDetails     RealEstateDetail[]
+  assetRevaluations     AssetRevaluation[]
 
   @@index([email])
   @@index([supabaseId])
@@ -228,6 +231,9 @@ model Asset {
   // Phase 7
   preciousMetalHolding PreciousMetalHolding?
   commodityHolding     CommodityHolding?
+  // Phase 8
+  realEstateDetail     RealEstateDetail?
+  revaluations         AssetRevaluation[]
 
   @@index([userId])
   @@index([userId, type])
@@ -257,6 +263,7 @@ model Liability {
 
   user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   transactions     Transaction[]
+  linkedRealEstate RealEstateDetail[]
 
   @@index([userId])
   @@index([userId, type])
@@ -658,4 +665,78 @@ model CommodityHolding {
 
   @@index([userId])
   @@map("commodity_holdings")
+}
+
+// ─── Phase 8: Real Estate ──────────────────────────────────────────────────────
+
+enum RealEstateSubType {
+  RESIDENTIAL
+  COMMERCIAL
+  AGRICULTURAL
+  RENTAL
+  LAND
+  PLOT
+  APARTMENT
+  VILLA
+  UNDER_CONSTRUCTION
+}
+
+/// Structured real-estate details — linked 1:1 to an Asset row
+/// (type=REAL_ESTATE). currentEstimate is manual, re-appraised
+/// periodically (no live pricing API exists for property values).
+/// lat/lng are geocoded from addressLine via Nominatim/OSM at save time.
+model RealEstateDetail {
+  id                    String            @id @default(cuid())
+  assetId               String            @unique
+  userId                String
+  subType               RealEstateSubType
+  addressLine           String?
+  lat                   Decimal?          @db.Decimal(9, 6)
+  lng                   Decimal?          @db.Decimal(9, 6)
+  purchasePrice         Decimal           @db.Decimal(20, 6)
+  purchaseDate          DateTime?         @db.Date
+  currentEstimate       Decimal           @db.Decimal(20, 6)
+  lastAppraisalDate     DateTime?         @db.Date
+  /// Set only for rental-yielding properties (subType=RENTAL, or any
+  /// property with a tenant) — null means "not rented."
+  monthlyRentalIncome   Decimal?          @db.Decimal(20, 6)
+  annualMaintenanceCost Decimal?          @db.Decimal(20, 6)
+  areaValue             Decimal?          @db.Decimal(14, 2)
+  areaUnit              String?
+  /// Photo URLs, from the same document-upload pipeline as other assets.
+  photos                Json              @default("[]")
+  linkedLiabilityId     String?
+  currency              String
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  asset     Asset      @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  liability Liability? @relation(fields: [linkedLiabilityId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([linkedLiabilityId])
+  @@map("real_estate_details")
+}
+
+// ─── Phase 8: Manual revaluation history (collectibles, NFTs, etc.) ───────────
+
+/// Append-only manual revaluation log — lets a user track value changes
+/// over time for asset types with no pricing API (collectibles, NFTs).
+model AssetRevaluation {
+  id        String   @id @default(cuid())
+  assetId   String
+  userId    String
+  value     Decimal  @db.Decimal(20, 6)
+  currency  String
+  note      String?
+  valuedAt  DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([assetId])
+  @@index([userId])
+  @@map("asset_revaluations")
 }

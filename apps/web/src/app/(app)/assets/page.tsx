@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, type FormEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { AgGridReact } from "ag-grid-react";
 import { ClientSideRowModelModule, type ColDef } from "ag-grid-community";
@@ -11,7 +11,10 @@ import { Modal } from "@/components/ui/Modal";
 import { AssetTypeSelector, ASSET_TYPE_META, ASSET_CATEGORIES } from "@/components/forms/AssetTypeSelector";
 import { AssetForm } from "@/components/forms/AssetForm";
 import { useAssets, useAssetsSummary, useCreateAsset, useDeleteAsset, type AssetRow, type AssetsPortfolioSummary } from "@/hooks/useAssets";
+import { useRevaluations, useAddRevaluation } from "@/hooks/useRealEstate";
 import type { AssetType } from "@richer/shared-types";
+
+const REVALUABLE_TYPES = new Set(["COLLECTIBLE", "NFT"]);
 
 // ─── Tab categories ───────────────────────────────────────────────────────────
 const TABS = [
@@ -100,24 +103,99 @@ const columnDefs: ColDef<AssetRow>[] = [
   },
   {
     headerName: "",
-    width: 60,
+    width: 90,
     sortable: false,
     filter: false,
-    cellRenderer: (params: { data: AssetRow; context: { onDelete: (id: string) => void } }) => (
-      <button
-        onClick={() => params.context.onDelete(params.data.id)}
-        style={{
-          background: "transparent", border: "none", color: "var(--color-text-muted)",
-          cursor: "pointer", fontSize: "1rem", padding: "4px",
-          borderRadius: 4,
-        }}
-        title="Delete"
-      >
-        🗑
-      </button>
+    cellRenderer: (params: { data: AssetRow; context: { onDelete: (id: string) => void; onViewHistory: (asset: AssetRow) => void } }) => (
+      <div style={{ display: "flex", alignItems: "center", gap: 4, height: "100%" }}>
+        {REVALUABLE_TYPES.has(params.data.type) && (
+          <button
+            onClick={() => params.context.onViewHistory(params.data)}
+            style={{ background: "transparent", border: "none", color: "var(--color-text-muted)", cursor: "pointer", fontSize: "1rem", padding: "4px", borderRadius: 4 }}
+            title="Revaluation history"
+          >
+            📈
+          </button>
+        )}
+        <button
+          onClick={() => params.context.onDelete(params.data.id)}
+          style={{
+            background: "transparent", border: "none", color: "var(--color-text-muted)",
+            cursor: "pointer", fontSize: "1rem", padding: "4px",
+            borderRadius: 4,
+          }}
+          title="Delete"
+        >
+          🗑
+        </button>
+      </div>
     ),
   },
 ];
+
+// ─── Revaluation history modal (collectibles, NFTs) ────────────────────────────
+
+function RevaluationModal({ asset, onClose }: { asset: AssetRow | null; onClose: () => void }) {
+  const { data: entries = [], isLoading } = useRevaluations(asset?.id ?? null);
+  const addRevaluation = useAddRevaluation(asset?.id ?? "");
+  const [value, setValue] = useState("");
+  const [note, setNote] = useState("");
+
+  if (!asset) return null;
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    const parsed = parseFloat(value);
+    if (isNaN(parsed)) return;
+    await addRevaluation.mutateAsync({ value: parsed, currency: asset.currencyCode, ...(note && { note }) });
+    setValue("");
+    setNote("");
+  };
+
+  return (
+    <Modal open={!!asset} onClose={onClose} title={`Value History — ${asset.name}`} width={480}>
+      <form onSubmit={(e) => { void handleSubmit(e); }} style={{ display: "flex", gap: 10, marginBottom: 20 }}>
+        <input
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          type="number" step="0.01" required placeholder={`New value (${asset.currencyCode})`}
+          style={{ flex: 1, padding: "0.625rem 0.875rem", background: "var(--color-bg-input)", border: "1px solid var(--color-border-glass)", borderRadius: "var(--radius-md)", color: "var(--color-text-primary)", fontSize: "0.875rem", outline: "none" }}
+        />
+        <input
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="Note (optional)"
+          style={{ flex: 1, padding: "0.625rem 0.875rem", background: "var(--color-bg-input)", border: "1px solid var(--color-border-glass)", borderRadius: "var(--radius-md)", color: "var(--color-text-primary)", fontSize: "0.875rem", outline: "none" }}
+        />
+        <button type="submit" disabled={addRevaluation.isPending} className="btn-accent" style={{ whiteSpace: "nowrap", opacity: addRevaluation.isPending ? 0.5 : 1 }}>
+          + Log Value
+        </button>
+      </form>
+
+      {isLoading ? (
+        <p style={{ color: "var(--color-text-muted)", fontSize: "0.875rem" }}>Loading…</p>
+      ) : entries.length === 0 ? (
+        <p style={{ color: "var(--color-text-muted)", fontSize: "0.875rem" }}>No revaluations logged yet.</p>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {entries.map((entry) => (
+            <div key={entry.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.75rem 1rem", background: "var(--color-bg-input)", borderRadius: "var(--radius-md)", border: "1px solid var(--color-border-glass)" }}>
+              <div>
+                <p style={{ fontSize: "0.8125rem", color: "var(--color-text-muted)" }}>
+                  {new Date(entry.valuedAt).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}
+                </p>
+                {entry.note && <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", marginTop: 2 }}>{entry.note}</p>}
+              </div>
+              <p style={{ fontFamily: "var(--font-mono)", fontWeight: 700, color: "var(--color-text-primary)" }}>
+                {new Intl.NumberFormat(undefined, { style: "currency", currency: entry.currency, maximumFractionDigits: 0 }).format(entry.value)}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+    </Modal>
+  );
+}
 
 // ─── Empty state ──────────────────────────────────────────────────────────────
 function EmptyAssets({ onAdd }: { onAdd: () => void }) {
@@ -187,6 +265,7 @@ export default function AssetsPage() {
   const [modalState, setModalState] = useState<"closed" | "type-select" | "form">("closed");
   const [selectedType, setSelectedType] = useState<AssetType | null>(null);
   const [search, setSearch] = useState("");
+  const [historyAsset, setHistoryAsset] = useState<AssetRow | null>(null);
 
   const { data: assets = [], isLoading } = useAssets();
   const { data: summary } = useAssetsSummary();
@@ -228,7 +307,7 @@ export default function AssetsPage() {
     }
   }, [deleteAsset]);
 
-  const gridContext = useMemo(() => ({ onDelete: handleDelete }), [handleDelete]);
+  const gridContext = useMemo(() => ({ onDelete: handleDelete, onViewHistory: setHistoryAsset }), [handleDelete]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
@@ -352,6 +431,8 @@ export default function AssetsPage() {
           ) : null}
         </AnimatePresence>
       </Modal>
+
+      <RevaluationModal asset={historyAsset} onClose={() => setHistoryAsset(null)} />
     </div>
   );
 }

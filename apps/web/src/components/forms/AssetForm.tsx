@@ -279,11 +279,55 @@ function BusinessDetails({ register, errors }: DetailProps) {
           { value: "PROFITABLE", label: "Profitable" }, { value: "PUBLIC", label: "Public" },
         ]} />
       </FormField>
+      <FormField label="Round" hint="Optional, e.g. named funding round" error={errors.round?.message as string}>
+        <TextInput {...register("round")} placeholder="e.g. Series A extension" />
+      </FormField>
+      <FormField label="Valuation (post-money)" hint="Optional" error={errors.valuation?.message as string}>
+        <TextInput {...register("valuation", { valueAsNumber: true })} type="number" placeholder="0" />
+      </FormField>
       <FormField label="Industry" error={errors.industry?.message as string}>
         <TextInput {...register("industry")} placeholder="e.g. Fintech" />
       </FormField>
       <FormField label="Annual Revenue" hint="Optional" error={errors.revenue?.message as string}>
         <TextInput {...register("revenue", { valueAsNumber: true })} type="number" placeholder="0" />
+      </FormField>
+    </div>
+  );
+}
+
+function ReitDetails({ register, errors }: DetailProps) {
+  return (
+    <div style={fieldGrid}>
+      <FormField label="REIT Name" required error={errors.reitName?.message as string}>
+        <TextInput {...register("reitName")} placeholder="e.g. Embassy Office Parks REIT" />
+      </FormField>
+      <FormField label="Units" required error={errors.units?.message as string}>
+        <TextInput {...register("units", { valueAsNumber: true })} type="number" step="0.001" placeholder="0" />
+      </FormField>
+      <FormField label="Current NAV / Unit" required error={errors.nav?.message as string}>
+        <TextInput {...register("nav", { valueAsNumber: true })} type="number" step="0.01" placeholder="0.00" />
+      </FormField>
+      <FormField label="Exchange" hint="Optional" error={errors.exchange?.message as string}>
+        <TextInput {...register("exchange")} placeholder="e.g. NSE, BSE" />
+      </FormField>
+    </div>
+  );
+}
+
+function P2pLendingDetails({ register, errors }: DetailProps) {
+  return (
+    <div style={fieldGrid}>
+      <FormField label="Platform" required error={errors.platform?.message as string}>
+        <TextInput {...register("platform")} placeholder="e.g. LenDenClub, Faircent" />
+      </FormField>
+      <FormField label="Principal Amount" required error={errors.principal?.message as string}>
+        <TextInput {...register("principal", { valueAsNumber: true })} type="number" placeholder="0" />
+      </FormField>
+      <FormField label="Interest Rate (% p.a.)" required error={errors.interestRate?.message as string}>
+        <TextInput {...register("interestRate", { valueAsNumber: true })} type="number" step="0.01" placeholder="0.00" />
+      </FormField>
+      <FormField label="Tenure (months)" required error={errors.tenureMonths?.message as string}>
+        <TextInput {...register("tenureMonths", { valueAsNumber: true })} type="number" placeholder="0" />
       </FormField>
     </div>
   );
@@ -427,6 +471,8 @@ function DetailFields({ type, register, errors }: DetailProps & { type: AssetTyp
     case "NFT": return <NftDetails register={register} errors={errors} />;
     case "BUSINESS_EQUITY": case "PRIVATE_EQUITY": case "ANGEL_INVESTMENT":
       return <BusinessDetails register={register} errors={errors} />;
+    case "REIT": return <ReitDetails register={register} errors={errors} />;
+    case "P2P_LENDING": return <P2pLendingDetails register={register} errors={errors} />;
     case "RETIREMENT_ACCOUNT": return <RetirementDetails register={register} errors={errors} />;
     case "INSURANCE": return <InsuranceDetails register={register} errors={errors} />;
     case "FOREX": return <ForexDetails register={register} errors={errors} />;

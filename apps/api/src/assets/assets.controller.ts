@@ -54,4 +54,20 @@ export class AssetsController {
   remove(@CurrentUser() user: UserWithRelations, @Param("id") id: string) {
     return this.assetsService.remove(user.id, id);
   }
+
+  // ─── Manual revaluation history (collectibles, NFTs, etc.) ────────────────
+
+  @Get(":id/revaluations")
+  listRevaluations(@CurrentUser() user: UserWithRelations, @Param("id") id: string) {
+    return this.assetsService.listRevaluations(user.id, id);
+  }
+
+  @Post(":id/revaluations")
+  addRevaluation(
+    @CurrentUser() user: UserWithRelations,
+    @Param("id") id: string,
+    @Body() dto: { value: number; currency: string; note?: string; valuedAt?: string },
+  ) {
+    return this.assetsService.addRevaluation(user.id, id, dto);
+  }
 }

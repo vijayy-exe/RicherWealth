@@ -116,6 +116,66 @@ export class AssetsService {
     await this.triggerNetWorthUpdate(userId);
   }
 
+  // ─── Manual revaluation history (collectibles, NFTs, etc.) ────────────────
+
+  /** Appends a revaluation entry and updates the asset's currentValue to
+   * match — this is how a user without a pricing API tracks value changes
+   * over time while still keeping net worth correct. */
+  async addRevaluation(
+    userId: string,
+    assetId: string,
+    dto: { value: number; currency: string; note?: string; valuedAt?: string },
+  ) {
+    await this.findOne(userId, assetId); // ownership check
+
+    const [entry] = await this.prisma.$transaction(async (tx) => {
+      const entry = await tx.assetRevaluation.create({
+        data: {
+          assetId,
+          userId,
+          value: dto.value.toString(),
+          currency: dto.currency,
+          note: dto.note ?? null,
+          ...(dto.valuedAt && { valuedAt: new Date(dto.valuedAt) }),
+        },
+      });
+      await tx.asset.update({
+        where: { id: assetId },
+        data: { currentValue: dto.value.toFixed(6), currencyCode: dto.currency },
+      });
+      return [entry];
+    });
+
+    await this.triggerNetWorthUpdate(userId);
+    return {
+      id: entry.id,
+      assetId: entry.assetId,
+      value: parseFloat(entry.value.toString()),
+      currency: entry.currency,
+      note: entry.note,
+      valuedAt: entry.valuedAt.toISOString(),
+      createdAt: entry.createdAt.toISOString(),
+    };
+  }
+
+  async listRevaluations(userId: string, assetId: string) {
+    await this.findOne(userId, assetId); // ownership check
+
+    const entries = await this.prisma.assetRevaluation.findMany({
+      where: { assetId, userId },
+      orderBy: { valuedAt: "desc" },
+    });
+    return entries.map((e) => ({
+      id: e.id,
+      assetId: e.assetId,
+      value: parseFloat(e.value.toString()),
+      currency: e.currency,
+      note: e.note,
+      valuedAt: e.valuedAt.toISOString(),
+      createdAt: e.createdAt.toISOString(),
+    }));
+  }
+
   private async triggerNetWorthUpdate(userId: string): Promise<void> {
     try {
       await this.netWorth.writeSnapshot(userId);
