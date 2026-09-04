@@ -69,6 +69,15 @@ enum LiabilityType {
   OTHER
 }
 
+/// How often a loan's scheduled payment is due — drives the amortization engine's period count.
+enum LoanPaymentFrequency {
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+  QUARTERLY
+  ANNUALLY
+}
+
 /// Household role for RBAC
 enum HouseholdRole {
   OWNER
@@ -92,7 +101,7 @@ model User {
   email               String    @unique
   name                String?
   avatarUrl           String?
-  baseCurrency        String    @default("USD")   // ISO 4217
+  baseCurrency        String    @default("USD") // ISO 4217
   mfaEnabled          Boolean   @default(false)
   /// TOTP secret (encrypted at application layer before storing)
   mfaTotpSecret       String?
@@ -104,28 +113,32 @@ model User {
   deletedAt           DateTime?
 
   // Relations
-  assets               Asset[]
-  liabilities          Liability[]
-  transactions         Transaction[]
-  householdMemberships HouseholdMember[]
-  sessions             Session[]
-  passkeys             Passkey[]
-  netWorthSnapshots    NetWorthSnapshot[]
-  stockHoldings        StockHolding[]
-  watchlists           Watchlist[]
+  assets                Asset[]
+  liabilities           Liability[]
+  transactions          Transaction[]
+  householdMemberships  HouseholdMember[]
+  sessions              Session[]
+  passkeys              Passkey[]
+  netWorthSnapshots     NetWorthSnapshot[]
+  stockHoldings         StockHolding[]
+  watchlists            Watchlist[]
   // Phase 5
-  mutualFundHoldings   MutualFundHolding[]
-  etfHoldings          EtfHolding[]
-  bondHoldings         BondHolding[]
+  mutualFundHoldings    MutualFundHolding[]
+  etfHoldings           EtfHolding[]
+  bondHoldings          BondHolding[]
   // Phase 6
-  cryptoHoldings       CryptoHolding[]
-  cryptoPriceAlerts    CryptoPriceAlert[]
+  cryptoHoldings        CryptoHolding[]
+  cryptoPriceAlerts     CryptoPriceAlert[]
   // Phase 7
   preciousMetalHoldings PreciousMetalHolding[]
   commodityHoldings     CommodityHolding[]
   // Phase 8
   realEstateDetails     RealEstateDetail[]
   assetRevaluations     AssetRevaluation[]
+  // Phase 10
+  incomes               Income[]
+  categoryRules         CategoryRule[]
+  plaidItems            PlaidItem[]
 
   @@index([email])
   @@index([supabaseId])
@@ -134,20 +147,20 @@ model User {
 
 /// Active user session — tracked so users can revoke them
 model Session {
-  id          String    @id @default(cuid())
-  userId      String
+  id                String    @id @default(cuid())
+  userId            String
   /// Supabase session ID for cross-reference
-  supabaseSessionId String?  @unique
-  deviceName  String?   // e.g. "Chrome on macOS"
-  deviceType  String?   // "desktop" | "mobile" | "tablet"
-  ipAddress   String?
-  userAgent   String?
-  lastSeenAt  DateTime  @default(now())
-  expiresAt   DateTime?
-  revokedAt   DateTime?
-  createdAt   DateTime  @default(now())
+  supabaseSessionId String?   @unique
+  deviceName        String? // e.g. "Chrome on macOS"
+  deviceType        String? // "desktop" | "mobile" | "tablet"
+  ipAddress         String?
+  userAgent         String?
+  lastSeenAt        DateTime  @default(now())
+  expiresAt         DateTime?
+  revokedAt         DateTime?
+  createdAt         DateTime  @default(now())
 
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([revokedAt])
@@ -156,23 +169,23 @@ model Session {
 
 /// WebAuthn passkey credential
 model Passkey {
-  id             String           @id @default(cuid())
-  userId         String
+  id           String            @id @default(cuid())
+  userId       String
   /// Raw credential ID from WebAuthn (base64url encoded)
-  credentialId   String           @unique
+  credentialId String            @unique
   /// COSE public key (base64url encoded)
-  publicKey      String
+  publicKey    String
   /// Signature counter — must be monotonically increasing to detect cloning
-  counter        BigInt           @default(0)
-  deviceType     PasskeyDeviceType @default(MULTI_DEVICE)
+  counter      BigInt            @default(0)
+  deviceType   PasskeyDeviceType @default(MULTI_DEVICE)
   /// Human-readable label set by the user
-  name           String           @default("My Passkey")
-  backedUp       Boolean          @default(false)
-  transports     String[]
-  createdAt      DateTime         @default(now())
-  lastUsedAt     DateTime?
+  name         String            @default("My Passkey")
+  backedUp     Boolean           @default(false)
+  transports   String[]
+  createdAt    DateTime          @default(now())
+  lastUsedAt   DateTime?
 
-  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@map("passkeys")
@@ -185,7 +198,7 @@ model Household {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  members   HouseholdMember[]
+  members HouseholdMember[]
 
   @@map("households")
 }
@@ -198,8 +211,8 @@ model HouseholdMember {
   role        HouseholdRole @default(MEMBER)
   joinedAt    DateTime      @default(now())
 
-  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  household   Household     @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
 
   @@unique([userId, householdId])
   @@map("household_members")
@@ -219,15 +232,15 @@ model Asset {
   updatedAt    DateTime  @updatedAt
   deletedAt    DateTime?
 
-  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  transactions      Transaction[]
-  stockHolding      StockHolding?
+  user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions         Transaction[]
+  stockHolding         StockHolding?
   // Phase 5
-  mutualFundHolding MutualFundHolding?
-  etfHolding        EtfHolding?
-  bondHolding       BondHolding?
+  mutualFundHolding    MutualFundHolding?
+  etfHolding           EtfHolding?
+  bondHolding          BondHolding?
   // Phase 6
-  cryptoHolding     CryptoHolding?
+  cryptoHolding        CryptoHolding?
   // Phase 7
   preciousMetalHolding PreciousMetalHolding?
   commodityHolding     CommodityHolding?
@@ -243,25 +256,33 @@ model Asset {
 
 /// Liability (loan/debt) record
 model Liability {
-  id               String        @id @default(cuid())
-  userId           String
-  type             LiabilityType
-  name             String
-  principalAmount  Decimal       @db.Decimal(20, 6)
-  remainingBalance Decimal       @db.Decimal(20, 6)
-  interestRate     Decimal       @db.Decimal(8, 4)
-  currencyCode     String
-  emiAmount        Decimal?      @db.Decimal(20, 6)
-  dueDate          DateTime?
-  startDate        DateTime?
-  maturityDate     DateTime?
-  details          Json          @default("{}")
-  notes            String?
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
-  deletedAt        DateTime?
+  id                String               @id @default(cuid())
+  userId            String
+  type              LiabilityType
+  name              String
+  principalAmount   Decimal              @db.Decimal(20, 6)
+  remainingBalance  Decimal              @db.Decimal(20, 6)
+  interestRate      Decimal              @db.Decimal(8, 4)
+  currencyCode      String
+  emiAmount         Decimal?             @db.Decimal(20, 6)
+  dueDate           DateTime?
+  startDate         DateTime?
+  maturityDate      DateTime?
+  /// Amortized loan types (mortgage/car/education/personal): payment cadence for the amortization engine. Ignored for CREDIT_CARD.
+  paymentFrequency  LoanPaymentFrequency @default(MONTHLY)
+  /// Amortized loan types: total tenure in months, always expressed in months regardless of paymentFrequency. Required to generate an amortization schedule; null for CREDIT_CARD.
+  tenureMonths      Int?
+  /// CREDIT_CARD only: minimum payment as % of balance (e.g. 2.00 = 2%). Defaults to 2% at the calculation layer when unset.
+  minPaymentPercent Decimal?             @db.Decimal(5, 2)
+  /// CREDIT_CARD only: flat-dollar floor on the minimum payment. Defaults to 25 (in currencyCode) at the calculation layer when unset.
+  minPaymentFlat    Decimal?             @db.Decimal(20, 6)
+  details           Json                 @default("{}")
+  notes             String?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  deletedAt         DateTime?
 
-  user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user             User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   transactions     Transaction[]
   linkedRealEstate RealEstateDetail[]
 
@@ -272,32 +293,37 @@ model Liability {
 
 /// Financial transaction — append-only ledger
 model Transaction {
-  id           String   @id @default(cuid())
-  userId       String
-  assetId      String?
-  liabilityId  String?
-  type         String
-  amount       Decimal  @db.Decimal(20, 6)
-  currencyCode String
-  quantity     Decimal? @db.Decimal(20, 8)
-  pricePerUnit Decimal? @db.Decimal(20, 6)
-  date         DateTime
-  category     String?
-  merchant     String?
-  description  String?
-  source       String   @default("manual")
-  details      Json     @default("{}")
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                  String   @id @default(cuid())
+  userId              String
+  assetId             String?
+  liabilityId         String?
+  type                String
+  amount              Decimal  @db.Decimal(20, 6)
+  currencyCode        String
+  quantity            Decimal? @db.Decimal(20, 8)
+  pricePerUnit        Decimal? @db.Decimal(20, 6)
+  date                DateTime
+  category            String?
+  merchant            String?
+  description         String?
+  source              String   @default("manual")
+  /// Provider-side stable ID (e.g. Plaid transaction_id) — used to dedupe bank-synced imports. Null for manual entries and CSV/PDF rows (deduped by date+amount+merchant instead, since statements don't carry a stable ID).
+  externalId          String?
+  /// True when auto-categorization couldn't confidently match a rule (fell back to OTHER) — surfaced to the user as a review queue; correcting one teaches the per-user CategoryRule table.
+  needsCategoryReview Boolean  @default(false)
+  details             Json     @default("{}")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
-  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  asset        Asset?      @relation(fields: [assetId], references: [id])
-  liability    Liability?  @relation(fields: [liabilityId], references: [id])
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  asset     Asset?     @relation(fields: [assetId], references: [id])
+  liability Liability? @relation(fields: [liabilityId], references: [id])
 
   @@index([userId])
   @@index([userId, date])
   @@index([userId, type])
   @@index([assetId])
+  @@index([userId, externalId])
   @@map("transactions")
 }
 
@@ -309,9 +335,9 @@ model NetWorthSnapshot {
   totalLiabilities Decimal  @db.Decimal(24, 6)
   netWorth         Decimal  @db.Decimal(24, 6)
   baseCurrency     String
-  snapshotDate     DateTime @db.Date  // date only — one row per user per day
+  snapshotDate     DateTime @db.Date // date only — one row per user per day
 
-  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, snapshotDate])
   @@index([userId, snapshotDate])
@@ -321,8 +347,8 @@ model NetWorthSnapshot {
 /// Forex rate cache — refreshed hourly by ForexService
 model ForexRate {
   id        String   @id @default(cuid())
-  fromCode  String   // ISO 4217
-  toCode    String   // ISO 4217
+  fromCode  String // ISO 4217
+  toCode    String // ISO 4217
   rate      Decimal  @db.Decimal(20, 8)
   fetchedAt DateTime @default(now())
 
@@ -336,21 +362,21 @@ model ForexRate {
 /// Stock holding — linked 1:1 to a generic Asset row (type=STOCK)
 /// Asset.currentValue is kept in sync whenever price updates.
 model StockHolding {
-  id           String   @id @default(cuid())
-  assetId      String   @unique            // FK → Asset
+  id           String    @id @default(cuid())
+  assetId      String    @unique // FK → Asset
   userId       String
-  ticker       String                      // e.g. "AAPL", "RELIANCE"
-  exchange     String                      // e.g. "NASDAQ", "NSE", "BSE", "NYSE", "LSE", "HKEX"
-  quantity     Decimal  @db.Decimal(20, 8) // supports fractional shares
-  avgBuyPrice  Decimal  @db.Decimal(20, 6)
-  currency     String                      // currency of avgBuyPrice
+  ticker       String // e.g. "AAPL", "RELIANCE"
+  exchange     String // e.g. "NASDAQ", "NSE", "BSE", "NYSE", "LSE", "HKEX"
+  quantity     Decimal   @db.Decimal(20, 8) // supports fractional shares
+  avgBuyPrice  Decimal   @db.Decimal(20, 6)
+  currency     String // currency of avgBuyPrice
   purchaseDate DateTime?
-  lastSyncAt   DateTime?                   // when price was last fetched
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  lastSyncAt   DateTime? // when price was last fetched
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
-  asset        Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([ticker, exchange])
@@ -370,9 +396,9 @@ model StockPrice {
   pe            Decimal? @db.Decimal(12, 4) // P/E ratio from provider
   eps           Decimal? @db.Decimal(12, 4) // Earnings per share
   bvps          Decimal? @db.Decimal(12, 4) // Book value per share (for Graham)
-  dividendYield Decimal? @db.Decimal(8, 4)  // annual yield %
-  currency      String                       // currency of price
-  provider      String                       // "alpha_vantage" | "finnhub" | "twelve_data"
+  dividendYield Decimal? @db.Decimal(8, 4) // annual yield %
+  currency      String // currency of price
+  provider      String // "alpha_vantage" | "finnhub" | "twelve_data"
   fetchedAt     DateTime @default(now())
 
   @@unique([ticker, exchange])
@@ -382,14 +408,14 @@ model StockPrice {
 
 /// User-created watchlist (can have multiple)
 model Watchlist {
-  id        String          @id @default(cuid())
+  id        String   @id @default(cuid())
   userId    String
-  name      String          @default("My Watchlist")
-  createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
+  name      String   @default("My Watchlist")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  items     WatchlistItem[]
+  user  User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items WatchlistItem[]
 
   @@index([userId])
   @@map("watchlists")
@@ -397,13 +423,13 @@ model Watchlist {
 
 /// Individual ticker in a watchlist
 model WatchlistItem {
-  id          String    @id @default(cuid())
+  id          String   @id @default(cuid())
   watchlistId String
   ticker      String
   exchange    String
-  addedAt     DateTime  @default(now())
+  addedAt     DateTime @default(now())
 
-  watchlist   Watchlist @relation(fields: [watchlistId], references: [id], onDelete: Cascade)
+  watchlist Watchlist @relation(fields: [watchlistId], references: [id], onDelete: Cascade)
 
   @@unique([watchlistId, ticker, exchange])
   @@index([watchlistId])
@@ -415,24 +441,24 @@ model WatchlistItem {
 /// Mutual fund holding — linked 1:1 to an Asset row (type=MUTUAL_FUND)
 /// Asset.currentValue = unitsHeld × latestNAV, kept in sync by nav-sync job.
 model MutualFundHolding {
-  id             String          @id @default(cuid())
-  assetId        String          @unique            // FK → Asset
+  id             String           @id @default(cuid())
+  assetId        String           @unique // FK → Asset
   userId         String
   /// MFAPI.in scheme code (numeric string, e.g. "120503" for Axis Bluechip)
   schemeCode     String
   fundName       String
   investmentType MfInvestmentType @default(LUMPSUM)
-  unitsHeld      Decimal         @db.Decimal(20, 8)
-  avgNAV         Decimal         @db.Decimal(20, 6)  // weighted avg of all purchases
+  unitsHeld      Decimal          @db.Decimal(20, 8)
+  avgNAV         Decimal          @db.Decimal(20, 6) // weighted avg of all purchases
   /// Expense ratio % (user-entered or looked up; optional)
-  expenseRatio   Decimal?        @db.Decimal(6, 4)
+  expenseRatio   Decimal?         @db.Decimal(6, 4)
   isin           String?
   lastNavSyncAt  DateTime?
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
 
-  asset          Asset           @relation(fields: [assetId], references: [id], onDelete: Cascade)
-  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  asset           Asset            @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   sipInstallments SipInstallment[]
 
   @@index([userId])
@@ -442,18 +468,18 @@ model MutualFundHolding {
 
 /// Individual SIP installment — each is a distinct cash-flow for XIRR
 model SipInstallment {
-  id                  String           @id @default(cuid())
+  id                  String   @id @default(cuid())
   mutualFundHoldingId String
   /// Amount invested in this installment (in fund currency)
-  amount              Decimal          @db.Decimal(20, 6)
+  amount              Decimal  @db.Decimal(20, 6)
   /// Units allotted for this installment
-  units               Decimal          @db.Decimal(20, 8)
+  units               Decimal  @db.Decimal(20, 8)
   /// NAV at time of purchase
-  nav                 Decimal          @db.Decimal(20, 6)
-  date                DateTime         @db.Date
-  createdAt           DateTime         @default(now())
+  nav                 Decimal  @db.Decimal(20, 6)
+  date                DateTime @db.Date
+  createdAt           DateTime @default(now())
 
-  mutualFundHolding   MutualFundHolding @relation(fields: [mutualFundHoldingId], references: [id], onDelete: Cascade)
+  mutualFundHolding MutualFundHolding @relation(fields: [mutualFundHoldingId], references: [id], onDelete: Cascade)
 
   @@index([mutualFundHoldingId])
   @@index([date])
@@ -478,21 +504,21 @@ model NavHistory {
 /// ETF holding — linked 1:1 to an Asset row (type=ETF)
 /// Reuses the stock price pipeline (PriceSyncService) since ETFs trade like stocks.
 model EtfHolding {
-  id           String   @id @default(cuid())
-  assetId      String   @unique            // FK → Asset
+  id           String    @id @default(cuid())
+  assetId      String    @unique // FK → Asset
   userId       String
-  ticker       String                      // e.g. "NIFTYBEES", "SPY"
-  exchange     String                      // e.g. "NSE", "NASDAQ"
-  unitsHeld    Decimal  @db.Decimal(20, 8)
-  avgBuyPrice  Decimal  @db.Decimal(20, 6)
+  ticker       String // e.g. "NIFTYBEES", "SPY"
+  exchange     String // e.g. "NSE", "NASDAQ"
+  unitsHeld    Decimal   @db.Decimal(20, 8)
+  avgBuyPrice  Decimal   @db.Decimal(20, 6)
   currency     String
   purchaseDate DateTime?
   lastSyncAt   DateTime?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
-  asset        Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([ticker, exchange])
@@ -505,22 +531,22 @@ model EtfHolding {
 /// currentValue = quantityHeld × faceValue (book value; market pricing deferred to Phase 6)
 model BondHolding {
   id            String    @id @default(cuid())
-  assetId       String    @unique           // FK → Asset
+  assetId       String    @unique // FK → Asset
   userId        String
   issuer        String
   bondType      BondType  @default(CORPORATE)
   faceValue     Decimal   @db.Decimal(20, 6)
   couponRate    Decimal   @db.Decimal(8, 4) // annual % e.g. 7.25
   maturityDate  DateTime  @db.Date
-  quantityHeld  Int                          // number of bonds
+  quantityHeld  Int // number of bonds
   purchaseDate  DateTime? @db.Date
   purchasePrice Decimal?  @db.Decimal(20, 6) // price paid per bond
   isin          String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  asset         Asset     @relation(fields: [assetId], references: [id], onDelete: Cascade)
-  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([maturityDate])
@@ -534,12 +560,12 @@ model BondHolding {
 /// private key or seed phrase, and never requested/stored.
 model CryptoHolding {
   id            String    @id @default(cuid())
-  assetId       String    @unique           // FK → Asset
+  assetId       String    @unique // FK → Asset
   userId        String
   /// CoinGecko coin id, e.g. "bitcoin", "ethereum", "solana"
   coinId        String
-  symbol        String                       // e.g. "BTC" (denormalized for display)
-  name          String                       // e.g. "Bitcoin" (denormalized for display)
+  symbol        String // e.g. "BTC" (denormalized for display)
+  name          String // e.g. "Bitcoin" (denormalized for display)
   quantity      Decimal   @db.Decimal(28, 10) // crypto needs far more decimal precision than fiat
   avgBuyPrice   Decimal   @db.Decimal(20, 6)
   currency      String
@@ -551,8 +577,8 @@ model CryptoHolding {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  asset         Asset     @relation(fields: [assetId], references: [id], onDelete: Cascade)
-  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([coinId])
@@ -578,7 +604,7 @@ model CryptoPriceAlert {
   triggeredAt DateTime?
   createdAt   DateTime            @default(now())
 
-  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([coinId])
@@ -603,30 +629,30 @@ enum PreciousMetalSubType {
 /// PHYSICAL/JEWELLERY are valued by weightGrams x spot price x (purity
 /// fraction); DIGITAL/ETF are valued by quantity (units) x spot/unit price.
 model PreciousMetalHolding {
-  id           String                @id @default(cuid())
-  assetId      String                @unique
-  userId       String
-  metalType    PreciousMetalType
-  subType      PreciousMetalSubType
+  id             String               @id @default(cuid())
+  assetId        String               @unique
+  userId         String
+  metalType      PreciousMetalType
+  subType        PreciousMetalSubType
   /// Weight in grams — required for PHYSICAL/JEWELLERY.
-  weightGrams  Decimal?              @db.Decimal(12, 3)
+  weightGrams    Decimal?             @db.Decimal(12, 3)
   /// Purity as a 0-1 fraction (e.g. 0.9167 for 22K gold, 0.999 for 24K/fine
   /// silver) — stored as a fraction (not "22K" text) so it can be used
   /// directly in the valuation calc without a lookup table.
-  purityFraction Decimal?            @db.Decimal(5, 4)
+  purityFraction Decimal?             @db.Decimal(5, 4)
   /// Units held — for DIGITAL/ETF sub-types.
-  quantity     Decimal?              @db.Decimal(20, 8)
-  avgBuyPrice  Decimal               @db.Decimal(20, 6)
+  quantity       Decimal?             @db.Decimal(20, 8)
+  avgBuyPrice    Decimal              @db.Decimal(20, 6)
   /// Jewellery-specific making-charge premium, flat amount in `currency`.
-  makingCharge Decimal?              @db.Decimal(20, 6)
-  currency     String
-  purchaseDate DateTime?             @db.Date
-  lastSyncAt   DateTime?
-  createdAt    DateTime              @default(now())
-  updatedAt    DateTime              @updatedAt
+  makingCharge   Decimal?             @db.Decimal(20, 6)
+  currency       String
+  purchaseDate   DateTime?            @db.Date
+  lastSyncAt     DateTime?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
 
-  asset        Asset                 @relation(fields: [assetId], references: [id], onDelete: Cascade)
-  user         User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@map("precious_metal_holdings")
@@ -660,8 +686,8 @@ model CommodityHolding {
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
-  asset         Asset         @relation(fields: [assetId], references: [id], onDelete: Cascade)
-  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@map("commodity_holdings")
@@ -739,4 +765,121 @@ model AssetRevaluation {
   @@index([assetId])
   @@index([userId])
   @@map("asset_revaluations")
+}
+
+// ─── Phase 10: Income, Expense/Transaction Categorization, Bank Sync ──────────
+
+/// Recurring or one-off income source discriminator
+enum IncomeSourceType {
+  SALARY
+  BUSINESS
+  RENTAL
+  DIVIDENDS
+  ROYALTIES
+  FREELANCE
+  INTEREST
+  AFFILIATE
+  YOUTUBE
+  OTHER
+}
+
+/// How often an Income entry recurs — ONE_TIME entries are excluded from the
+/// monthly-passive-income rollup.
+enum IncomeFrequency {
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+  QUARTERLY
+  ANNUALLY
+  ONE_TIME
+}
+
+/// A declared income source (as opposed to a single bank-synced deposit
+/// Transaction) — structured amount+frequency so it can be annualized/
+/// monthlyized for the dashboard's passive-income figure.
+model Income {
+  id           String           @id @default(cuid())
+  userId       String
+  sourceType   IncomeSourceType
+  name         String
+  amount       Decimal          @db.Decimal(20, 6)
+  frequency    IncomeFrequency  @default(MONTHLY)
+  currencyCode String
+  startDate    DateTime?
+  endDate      DateTime?
+  isActive     Boolean          @default(true)
+  notes        String?
+  details      Json             @default("{}")
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  deletedAt    DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, sourceType])
+  @@map("incomes")
+}
+
+/// Expense category — the auto-categorization rules engine assigns one of
+/// these to every expense Transaction; OTHER is the low-confidence fallback.
+enum ExpenseCategory {
+  TRAVEL
+  SHOPPING
+  FOOD
+  UTILITIES
+  HEALTHCARE
+  ENTERTAINMENT
+  SUBSCRIPTIONS
+  BILLS
+  OTHER
+}
+
+/// Per-user learned categorization rule — created automatically whenever a
+/// user corrects a low-confidence (OTHER/needsCategoryReview) transaction,
+/// so the same merchant auto-categorizes correctly next time. The static
+/// seed keyword map (code, not DB — see categorization/category-rules.ts)
+/// is checked first for a merchant with no user rule yet.
+model CategoryRule {
+  id        String          @id @default(cuid())
+  userId    String
+  /// Lowercased substring matched against the transaction merchant name.
+  keyword   String
+  category  ExpenseCategory
+  createdAt DateTime        @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, keyword])
+  @@index([userId])
+  @@map("category_rules")
+}
+
+/// Health of a linked Plaid Item (one per connected bank/institution).
+enum PlaidItemStatus {
+  ACTIVE
+  ERROR
+  DISCONNECTED
+}
+
+/// One connected bank institution via Plaid Link. accessTokenEncrypted uses
+/// the same AES-256-GCM scheme as User.mfaTotpSecret (apps/api/src/auth/crypto.util.ts).
+model PlaidItem {
+  id                   String          @id @default(cuid())
+  userId               String
+  itemId               String          @unique
+  accessTokenEncrypted String
+  institutionId        String?
+  institutionName      String?
+  status               PlaidItemStatus @default(ACTIVE)
+  /// Plaid's transactionsSync cursor — lets incremental syncs resume where the last one left off.
+  cursor               String?
+  lastSyncedAt         DateTime?
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("plaid_items")
 }

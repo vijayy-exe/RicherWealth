@@ -16,14 +16,19 @@ type CurrencyExposureItemType {
 }
 
 type DashboardSummaryType {
+  annualInterestCost: Float!
   assetAllocation: [AllocationItemType!]!
   baseCurrency: String!
   currencyExposure: [CurrencyExposureItemType!]!
+  debtCostExceedsInvestmentReturns: Boolean!
+  debtCostPct: Float!
   debtRatio: Float!
   emergencyFundHealth: Float!
   hasAssets: Boolean!
+  investmentReturnPct: Float!
   monthChangeAbs: Float!
   monthChangePct: Float!
+  monthlyPassiveIncome: Float!
   snapshots: [SnapshotPointType!]!
   todayChangeAbs: Float!
   todayChangePct: Float!

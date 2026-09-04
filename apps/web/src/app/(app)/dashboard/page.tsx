@@ -8,6 +8,7 @@ import { useNetWorthSocket } from "@/hooks/useNetWorthSocket";
 import { SummaryCard } from "@/components/dashboard/SummaryCard";
 import { AllocationChart } from "@/components/dashboard/AllocationChart";
 import { CurrencyExposureWidget } from "@/components/dashboard/CurrencyExposureWidget";
+import { DebtVsInvestmentWidget } from "@/components/dashboard/DebtVsInvestmentWidget";
 import { TrendChart } from "@/components/dashboard/TrendChart";
 import { EmptyState } from "@/components/dashboard/EmptyState";
 import { Spinner } from "@richer/ui";
@@ -164,7 +165,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Quick stats row */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "1rem" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "1rem" }}>
             <motion.div
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
@@ -202,6 +203,25 @@ export default function DashboardPage() {
                 </p>
               </div>
             </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.35 }}
+              className="glass-card"
+              style={{ padding: "1.25rem 1.5rem", display: "flex", alignItems: "center", gap: "1rem" }}
+            >
+              <div style={{ fontSize: "2rem" }}>💵</div>
+              <div>
+                <p style={{ fontSize: "0.6875rem", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--color-text-muted)", marginBottom: 4 }}>Monthly Passive Income</p>
+                <p style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--color-gain)" }}>
+                  {new Intl.NumberFormat(undefined, { style: "currency", currency: data.baseCurrency, maximumFractionDigits: 0 }).format(data.monthlyPassiveIncome)}
+                </p>
+                <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)" }}>
+                  From active recurring income sources
+                </p>
+              </div>
+            </motion.div>
           </div>
 
           {/* Charts row */}
@@ -214,11 +234,20 @@ export default function DashboardPage() {
             )}
           </div>
 
-          {data.currencyExposure.length > 0 && (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "1rem" }}>
+          <div style={{ display: "grid", gridTemplateColumns: data.currencyExposure.length > 0 ? "1fr 1fr" : "1fr", gap: "1rem" }}>
+            {data.currencyExposure.length > 0 && (
               <CurrencyExposureWidget data={data.currencyExposure} baseCurrency={data.baseCurrency} />
-            </div>
-          )}
+            )}
+            {data.annualInterestCost > 0 && (
+              <DebtVsInvestmentWidget
+                debtCostPct={data.debtCostPct}
+                annualInterestCost={data.annualInterestCost}
+                investmentReturnPct={data.investmentReturnPct}
+                debtCostExceedsInvestmentReturns={data.debtCostExceedsInvestmentReturns}
+                currency={data.baseCurrency}
+              />
+            )}
+          </div>
         </>
       )}
     </div>

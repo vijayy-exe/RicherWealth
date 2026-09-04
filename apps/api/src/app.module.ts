@@ -28,6 +28,10 @@ import { PreciousMetalsModule } from "./precious-metals/precious-metals.module";
 import { CommoditiesModule } from "./commodities/commodities.module";
 // Phase 8
 import { RealEstateModule } from "./real-estate/real-estate.module";
+// Phase 10
+import { IncomeModule } from "./income/income.module";
+import { TransactionsModule } from "./transactions/transactions.module";
+import { BankSyncModule } from "./bank-sync/bank-sync.module";
 
 @Module({
   imports: [
@@ -74,6 +78,10 @@ import { RealEstateModule } from "./real-estate/real-estate.module";
     CommoditiesModule,
     // Phase 8
     RealEstateModule,
+    // Phase 10
+    IncomeModule,
+    TransactionsModule,
+    BankSyncModule,
 
     // Phase 3+
     // AssetsModule,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { motion } from "framer-motion";
@@ -20,6 +20,12 @@ const LiabilityFormSchema = z.object({
   startDate: z.string().optional(),
   maturityDate: z.string().optional(),
   notes: z.string().max(2000).optional(),
+  // Amortized loan types (everything except credit card)
+  paymentFrequency: z.enum(["WEEKLY", "BIWEEKLY", "MONTHLY", "QUARTERLY", "ANNUALLY"]),
+  tenureMonths: z.number().int().positive().optional(),
+  // Credit card only — revolving-balance minimum-payment config
+  minPaymentPercent: z.number().min(0).max(100).optional(),
+  minPaymentFlat: z.number().min(0).optional(),
 });
 
 type LiabilityFormValues = z.infer<typeof LiabilityFormSchema>;
@@ -31,6 +37,14 @@ const LIABILITY_TYPES = [
   { value: "PERSONAL_LOAN", label: "💳 Personal Loan" },
   { value: "CREDIT_CARD", label: "💳 Credit Card" },
   { value: "OTHER", label: "📋 Other" },
+];
+
+const PAYMENT_FREQUENCIES = [
+  { value: "WEEKLY", label: "Weekly" },
+  { value: "BIWEEKLY", label: "Bi-weekly" },
+  { value: "MONTHLY", label: "Monthly" },
+  { value: "QUARTERLY", label: "Quarterly" },
+  { value: "ANNUALLY", label: "Annually" },
 ];
 
 interface LiabilityFormProps {
@@ -66,9 +80,13 @@ export function LiabilityForm({ defaultValues, onSuccess, isLoading }: Liability
       remainingBalance: 0,
       interestRate: 0,
       currencyCode: "INR",
+      paymentFrequency: "MONTHLY",
       ...defaultValues,
     },
   });
+
+  const type = useWatch({ control, name: "type" });
+  const isCreditCard = type === "CREDIT_CARD";
 
   return (
     <motion.form
@@ -130,15 +148,58 @@ export function LiabilityForm({ defaultValues, onSuccess, isLoading }: Liability
           <FormField label="Interest Rate (% p.a.)" required error={errors.interestRate?.message}>
             <TextInput {...register("interestRate", { valueAsNumber: true })} type="number" step="0.01" min="0" max="100" placeholder="8.5" />
           </FormField>
-          <FormField label="EMI Amount" hint="Monthly instalment" error={errors.emiAmount?.message}>
-            <Controller
-              name="emiAmount"
-              control={control}
-              render={({ field }) => (
-                <CurrencyInput value={field.value ?? 0} onChange={field.onChange} />
-              )}
-            />
-          </FormField>
+
+          {!isCreditCard && (
+            <FormField label="EMI Amount" hint="Monthly instalment" error={errors.emiAmount?.message}>
+              <Controller
+                name="emiAmount"
+                control={control}
+                render={({ field }) => (
+                  <CurrencyInput value={field.value ?? 0} onChange={field.onChange} />
+                )}
+              />
+            </FormField>
+          )}
+
+          {!isCreditCard && (
+            <>
+              <FormField label="Payment Frequency" required error={errors.paymentFrequency?.message}>
+                <Controller
+                  name="paymentFrequency"
+                  control={control}
+                  render={({ field }) => (
+                    <SelectField value={field.value} onChange={field.onChange} options={PAYMENT_FREQUENCIES} />
+                  )}
+                />
+              </FormField>
+              <FormField label="Tenure (months)" hint="Needed to generate the amortization schedule" error={errors.tenureMonths?.message}>
+                <TextInput
+                  {...register("tenureMonths", { valueAsNumber: true })}
+                  type="number" step="1" min="1" placeholder="e.g. 360"
+                />
+              </FormField>
+            </>
+          )}
+
+          {isCreditCard && (
+            <>
+              <FormField label="Minimum Payment %" hint="Of balance — default 2%" error={errors.minPaymentPercent?.message}>
+                <TextInput
+                  {...register("minPaymentPercent", { valueAsNumber: true })}
+                  type="number" step="0.1" min="0" max="100" placeholder="2"
+                />
+              </FormField>
+              <FormField label="Minimum Payment Floor" hint="Flat-dollar minimum — default 25" error={errors.minPaymentFlat?.message}>
+                <Controller
+                  name="minPaymentFlat"
+                  control={control}
+                  render={({ field }) => (
+                    <CurrencyInput value={field.value ?? 0} onChange={field.onChange} />
+                  )}
+                />
+              </FormField>
+            </>
+          )}
         </div>
       </section>
 

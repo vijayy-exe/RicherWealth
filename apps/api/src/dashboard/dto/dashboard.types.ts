@@ -79,4 +79,29 @@ export class DashboardSummaryType {
 
   @Field()
   baseCurrency!: string;
+
+  // ─── Phase 9: debt cost vs. investment return (foundation for Phase 20's
+  // "your debt costs more than your investments earn" AI CFO insight) ──────
+
+  /** Weighted-average annual interest rate across all liabilities, 0 if debt-free. */
+  @Field(() => Float)
+  debtCostPct!: number;
+
+  /** Approximate annual interest cost: totalOutstandingDebt × debtCostPct. */
+  @Field(() => Float)
+  annualInterestCost!: number;
+
+  /** Year-over-year growth rate of total assets (independent of debt paydown). */
+  @Field(() => Float)
+  investmentReturnPct!: number;
+
+  /** True when debtCostPct exceeds investmentReturnPct and the user carries debt. */
+  @Field()
+  debtCostExceedsInvestmentReturns!: boolean;
+
+  // ─── Phase 10: income tracking ────────────────────────────────────────────
+
+  /** Sum of every active recurring Income entry, monthlyized and converted to baseCurrency. */
+  @Field(() => Float)
+  monthlyPassiveIncome!: number;
 }

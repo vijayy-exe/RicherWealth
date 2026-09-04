@@ -14,7 +14,24 @@ export const TransactionTypeSchema = z.enum([
   "withdrawal",
 ]);
 
-export const TransactionSourceSchema = z.enum(["manual", "bank_sync", "csv_import"]);
+export const TransactionSourceSchema = z.enum(["manual", "bank_sync", "csv_import", "pdf_import"]);
+
+/// Phase 10 — the auto-categorization rules engine assigns one of these to
+/// every expense transaction; OTHER is the low-confidence fallback that also
+/// sets needsCategoryReview.
+export const ExpenseCategorySchema = z.enum([
+  "TRAVEL",
+  "SHOPPING",
+  "FOOD",
+  "UTILITIES",
+  "HEALTHCARE",
+  "ENTERTAINMENT",
+  "SUBSCRIPTIONS",
+  "BILLS",
+  "OTHER",
+]);
+
+export type ExpenseCategory = z.infer<typeof ExpenseCategorySchema>;
 
 export const TransactionBaseSchema = z.object({
   type: TransactionTypeSchema,
@@ -29,6 +46,8 @@ export const TransactionBaseSchema = z.object({
   merchant: z.string().max(200).optional(),
   description: z.string().max(2000).optional(),
   source: TransactionSourceSchema.default("manual"),
+  externalId: z.string().max(200).optional(),
+  needsCategoryReview: z.boolean().default(false),
   details: z.record(z.unknown()).default({}),
 });
 

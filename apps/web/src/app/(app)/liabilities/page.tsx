@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import Link from "next/link";
 import { motion } from "framer-motion";
 import { AgGridReact } from "ag-grid-react";
 import { ClientSideRowModelModule, type ColDef } from "ag-grid-community";
@@ -30,10 +31,13 @@ const columnDefs: ColDef<LiabilityRow>[] = [
     cellRenderer: (params: { data: LiabilityRow }) => {
       const meta = LIABILITY_META[params.data.type] ?? { icon: "📋", color: "#5C6880" };
       return (
-        <div style={{ display: "flex", alignItems: "center", gap: 10, height: "100%" }}>
+        <Link
+          href={`/liabilities/${params.data.id}`}
+          style={{ display: "flex", alignItems: "center", gap: 10, height: "100%", textDecoration: "none" }}
+        >
           <span style={{ fontSize: "1.1rem" }}>{meta.icon}</span>
           <span style={{ fontWeight: 600, color: "var(--color-text-primary)" }}>{params.data.name}</span>
-        </div>
+        </Link>
       );
     },
   },
@@ -95,12 +99,30 @@ const columnDefs: ColDef<LiabilityRow>[] = [
   {
     field: "dueDate",
     headerName: "Next Due",
-    width: 120,
-    cellRenderer: (params: { data: LiabilityRow }) =>
-      params.data.dueDate
-        ? new Date(params.data.dueDate).toLocaleDateString("en-IN", { day: "numeric", month: "short" })
-        : "—",
-    cellStyle: { color: "var(--color-text-muted)", fontSize: "0.8rem" },
+    width: 150,
+    cellRenderer: (params: { data: LiabilityRow }) => {
+      if (!params.data.dueDate) return <span style={{ color: "var(--color-text-muted)" }}>—</span>;
+      const due = new Date(params.data.dueDate);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      due.setHours(0, 0, 0, 0);
+      const daysUntilDue = Math.round((due.getTime() - today.getTime()) / 86_400_000);
+      const isOverdue = daysUntilDue < 0;
+      const isSoon = daysUntilDue >= 0 && daysUntilDue <= 7;
+      return (
+        <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+          <span style={{ fontSize: "0.8rem", color: "var(--color-text-secondary)" }}>
+            {due.toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+          </span>
+          <span style={{
+            fontSize: "0.6875rem", fontWeight: 700,
+            color: isOverdue ? "var(--color-loss)" : isSoon ? "#FFB547" : "var(--color-text-muted)",
+          }}>
+            {isOverdue ? `${Math.abs(daysUntilDue)}d overdue` : daysUntilDue === 0 ? "Due today" : `in ${daysUntilDue}d`}
+          </span>
+        </div>
+      );
+    },
   },
   {
     headerName: "",
@@ -167,6 +189,8 @@ export default function LiabilitiesPage() {
     type: string; name: string; principalAmount: number; remainingBalance: number;
     interestRate: number; currencyCode: string; emiAmount?: number | undefined;
     dueDate?: string | undefined; startDate?: string | undefined; maturityDate?: string | undefined; notes?: string | undefined;
+    paymentFrequency: "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "QUARTERLY" | "ANNUALLY";
+    tenureMonths?: number | undefined; minPaymentPercent?: number | undefined; minPaymentFlat?: number | undefined;
   }) => {
     await createLiability.mutateAsync({
       type: data.type,
@@ -180,6 +204,10 @@ export default function LiabilitiesPage() {
       startDate: data.startDate ?? null,
       maturityDate: data.maturityDate ?? null,
       notes: data.notes ?? null,
+      paymentFrequency: data.paymentFrequency,
+      tenureMonths: data.tenureMonths ?? null,
+      minPaymentPercent: data.minPaymentPercent != null ? String(data.minPaymentPercent) : null,
+      minPaymentFlat: data.minPaymentFlat != null ? String(data.minPaymentFlat) : null,
       details: {},
     });
     setModalOpen(false);

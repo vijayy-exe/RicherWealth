@@ -228,6 +228,31 @@ export class NetWorthService {
     return { absChange, pctChange, fromValue: pastValue, toValue: currentValue };
   }
 
+  /**
+   * Year-over-year growth rate of total ASSETS (not net worth — asset value
+   * alone, unaffected by debt paydown) — used as the "investment return"
+   * side of the debt-cost-vs-investment-return comparison. Reuses the same
+   * NetWorthSnapshot rows getDelta() reads, just projecting totalAssets
+   * instead of netWorth.
+   */
+  async getAssetGrowthRate(userId: string, daysAgo: number): Promise<DeltaResult> {
+    const [current, snapshots] = await Promise.all([
+      this.calculateNetWorth(userId),
+      this.prisma.netWorthSnapshot.findMany({
+        where: { userId, snapshotDate: { lte: new Date(Date.now() - (daysAgo - 1) * 86400000) } },
+        orderBy: { snapshotDate: "desc" },
+        take: 1,
+      }),
+    ]);
+
+    const currentValue = current.totalAssets.toNumber();
+    const pastValue = snapshots[0] ? new Decimal(snapshots[0].totalAssets.toString()).toNumber() : currentValue;
+    const absChange = currentValue - pastValue;
+    const pctChange = pastValue !== 0 ? (absChange / Math.abs(pastValue)) * 100 : 0;
+
+    return { absChange, pctChange, fromValue: pastValue, toValue: currentValue };
+  }
+
   // ─── Full Dashboard Summary ───────────────────────────────────────────────
 
   async getDashboardSummary(userId: string): Promise<DashboardSummary> {

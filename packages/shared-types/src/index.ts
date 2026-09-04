@@ -12,3 +12,8 @@ export * from "./schemas/auth.schema";
 export * from "./schemas/mutual-fund.schema";
 export * from "./schemas/bond.schema";
 export * from "./schemas/crypto.schema";
+// Phase 9 — loan amortization engine (shared with apps/web for the live prepayment slider)
+export * from "./calc/amortization";
+// Phase 10 — income tracking, expense/bank-sync
+export * from "./schemas/income.schema";
+export * from "./calc/recurring-amount";

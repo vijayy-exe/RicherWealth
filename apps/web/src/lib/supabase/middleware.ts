@@ -30,12 +30,19 @@ export async function updateSession(request: NextRequest) {
     },
   );
 
-  // IMPORTANT: do not write any logic between createServerClient and getUser().
-  // A simple mistake could make it very hard to debug issues with users being
-  // logged out unexpectedly.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  let user = null;
+  try {
+    const userPromise = supabase.auth
+      .getUser()
+      .then((res) => res.data?.user ?? null)
+      .catch(() => null);
+    const timeoutPromise = new Promise<null>((resolve) =>
+      setTimeout(() => resolve(null), 1000),
+    );
+    user = await Promise.race([userPromise, timeoutPromise]);
+  } catch {
+    user = null;
+  }
 
   // ─── Route protection ──────────────────────────────────────────────────────
   const { pathname } = request.nextUrl;

@@ -5,6 +5,8 @@ import { createClient } from "@/lib/supabase/client";
 
 const API = process.env["NEXT_PUBLIC_API_URL"] ?? "http://localhost:4000";
 
+export type PaymentFrequency = "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "QUARTERLY" | "ANNUALLY";
+
 export interface LiabilityRow {
   id: string;
   userId: string;
@@ -19,10 +21,25 @@ export interface LiabilityRow {
   startDate?: string | null;
   maturityDate?: string | null;
   notes?: string | null;
+  paymentFrequency: PaymentFrequency;
+  tenureMonths?: number | null;
+  minPaymentPercent?: string | null;
+  minPaymentFlat?: string | null;
   details: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
   deletedAt?: string | null;
+}
+
+export interface UpcomingDue {
+  id: string;
+  name: string;
+  type: string;
+  dueDate: string;
+  daysUntilDue: number;
+  isOverdue: boolean;
+  emiAmount: number | null;
+  currencyCode: string;
 }
 
 async function getToken(): Promise<string> {
@@ -67,6 +84,57 @@ export function useLiabilitiesSummary(type?: string) {
     queryKey: ["liabilities", "summary", type ?? "all"],
     queryFn: () => apiFetch<LiabilitiesPortfolioSummary | null>(`/liabilities/summary${type ? `?type=${type}` : ""}`),
     staleTime: 15_000,
+  });
+}
+
+export function useLiability(id: string) {
+  return useQuery({
+    queryKey: ["liabilities", "detail", id],
+    queryFn: () => apiFetch<LiabilityRow>(`/liabilities/${id}`),
+    staleTime: 15_000,
+    enabled: !!id,
+  });
+}
+
+export function useUpcomingDues() {
+  return useQuery({
+    queryKey: ["liabilities", "upcoming-dues"],
+    queryFn: () => apiFetch<UpcomingDue[]>("/liabilities/upcoming-dues"),
+    staleTime: 30_000,
+  });
+}
+
+// Credit-card revolving-balance math — different shape from an amortization
+// schedule, so it gets its own endpoint/hook (see getCreditCardPayoff on the
+// backend). The amortization schedule and prepayment slider, by contrast,
+// are computed directly in the browser with @richer/shared-types — the
+// exact same pure functions the backend uses — so the "what if I prepay ₹X"
+// slider updates instantly with no network round-trip per tick.
+export interface CreditCardPayoffMonth {
+  month: number;
+  payment: number;
+  interestPortion: number;
+  principalPortion: number;
+  remainingBalance: number;
+  cumulativeInterest: number;
+}
+
+export interface CreditCardPayoffSummary {
+  monthlyInterest: number;
+  minimumPayment: number;
+  principalPortion: number;
+  monthsToPayoff: number;
+  totalInterestPaid: number;
+  neverPaysOff: boolean;
+  months: CreditCardPayoffMonth[];
+}
+
+export function useCreditCardPayoff(id: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["liabilities", "credit-card-payoff", id],
+    queryFn: () => apiFetch<CreditCardPayoffSummary>(`/liabilities/${id}/credit-card-payoff`),
+    staleTime: 30_000,
+    enabled: enabled && !!id,
   });
 }
 

@@ -34,6 +34,11 @@ const DASHBOARD_QUERY = /* GraphQL */ `
         date
         netWorth
       }
+      debtCostPct
+      annualInterestCost
+      investmentReturnPct
+      debtCostExceedsInvestmentReturns
+      monthlyPassiveIncome
     }
   }
 `;
@@ -53,6 +58,11 @@ export interface DashboardSummary {
   assetAllocation: Array<{ category: string; valueInBase: number; percentage: number }>;
   currencyExposure: Array<{ currency: string; nativeValue: number; valueInBase: number; percentage: number }>;
   snapshots: Array<{ date: string; netWorth: number }>;
+  debtCostPct: number;
+  annualInterestCost: number;
+  investmentReturnPct: number;
+  debtCostExceedsInvestmentReturns: boolean;
+  monthlyPassiveIncome: number;
 }
 
 async function fetchDashboard(token: string): Promise<DashboardSummary> {

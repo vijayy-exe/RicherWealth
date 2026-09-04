@@ -7,6 +7,8 @@ const NAV_LINKS = [
   { href: "/dashboard", label: "Dashboard", icon: "📊" },
   { href: "/assets", label: "Assets", icon: "💎" },
   { href: "/liabilities", label: "Liabilities", icon: "📋" },
+  { href: "/income", label: "Income", icon: "💵" },
+  { href: "/transactions", label: "Transactions", icon: "🧾" },
   { href: "/stocks", label: "Stocks", icon: "📈" },
   { href: "/mutual-funds", label: "Mutual Funds", icon: "🏦" },
   { href: "/bonds", label: "Bonds", icon: "🏛️" },
