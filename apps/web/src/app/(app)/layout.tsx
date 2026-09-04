@@ -16,6 +16,7 @@ const NAV_LINKS = [
   { href: "/precious-metals", label: "Precious Metals", icon: "🥇" },
   { href: "/commodities", label: "Commodities", icon: "🛢️" },
   { href: "/real-estate", label: "Real Estate", icon: "🏠" },
+  { href: "/analytics", label: "Analytics", icon: "📐" },
   { href: "/settings", label: "Settings", icon: "⚙️" },
 ];
 

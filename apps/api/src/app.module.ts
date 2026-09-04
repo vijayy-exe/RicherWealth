@@ -32,6 +32,8 @@ import { RealEstateModule } from "./real-estate/real-estate.module";
 import { IncomeModule } from "./income/income.module";
 import { TransactionsModule } from "./transactions/transactions.module";
 import { BankSyncModule } from "./bank-sync/bank-sync.module";
+// Phase 11
+import { AnalyticsModule } from "./analytics/analytics.module";
 
 @Module({
   imports: [
@@ -82,11 +84,12 @@ import { BankSyncModule } from "./bank-sync/bank-sync.module";
     IncomeModule,
     TransactionsModule,
     BankSyncModule,
+    // Phase 11
+    AnalyticsModule,
 
     // Phase 3+
     // AssetsModule,
     // LiabilitiesModule,
-    // AnalyticsModule,
     // AiModule,
   ],
   controllers: [AppController],
