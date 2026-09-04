@@ -17,6 +17,7 @@ const NAV_LINKS = [
   { href: "/commodities", label: "Commodities", icon: "🛢️" },
   { href: "/real-estate", label: "Real Estate", icon: "🏠" },
   { href: "/analytics", label: "Analytics", icon: "📐" },
+  { href: "/risk", label: "Risk", icon: "🛡️" },
   { href: "/settings", label: "Settings", icon: "⚙️" },
 ];
 

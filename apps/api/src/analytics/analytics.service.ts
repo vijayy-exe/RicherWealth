@@ -184,11 +184,31 @@ export class AnalyticsService implements OnModuleInit {
     return { ...(result as object), cached: false };
   }
 
+  // ─── Return-series stats for a specific asset subset (Phase 13 goals) ────
+
+  /**
+   * Daily value-weighted mean return and standard deviation across an
+   * ARBITRARY SUBSET of a user's assets (or every asset, if `assetIds` is
+   * omitted) — reuses the exact same portfolio-return-series assembly as
+   * `getRiskMetrics`/`getMonteCarlo` above, just parameterized by which
+   * assets to include. This is what lets a Goal linked to specific assets
+   * get ITS OWN mu/sigma (e.g. a "House" goal funded by a debt fund
+   * shouldn't inherit volatility from an unrelated crypto holding elsewhere
+   * in the portfolio) rather than reusing the whole portfolio's risk
+   * profile for every goal.
+   */
+  async getReturnSeriesStats(userId: string, assetIds?: string[]): Promise<{ muDaily: number; sigmaDaily: number; hasSufficientData: boolean }> {
+    const { portfolioReturns } = await this.getPortfolioReturnSeries(userId, assetIds);
+    if (portfolioReturns.length < 2) return { muDaily: 0, sigmaDaily: 0, hasSufficientData: false };
+    const returnValues = portfolioReturns.map((r) => r.return);
+    return { muDaily: mean(returnValues), sigmaDaily: stdDev(returnValues), hasSufficientData: true };
+  }
+
   // ─── Internal data assembly ───────────────────────────────────────────────
 
-  private async loadAssetsWithTypeDetails(userId: string) {
+  private async loadAssetsWithTypeDetails(userId: string, assetIds?: string[]) {
     return this.prisma.asset.findMany({
-      where: { userId, deletedAt: null },
+      where: { userId, deletedAt: null, ...(assetIds && assetIds.length > 0 ? { id: { in: assetIds } } : {}) },
       include: {
         stockHolding: true,
         etfHolding: true,
@@ -214,9 +234,10 @@ export class AnalyticsService implements OnModuleInit {
   }
 
   /** Aggregate, value-weighted daily portfolio return series across every
-   * holding that has real history, aligned on common dates. */
-  private async getPortfolioReturnSeries(userId: string): Promise<{ portfolioReturns: DailyReturn[]; portfolioValues: number[]; initialValue: number }> {
-    const assets = await this.loadAssetsWithTypeDetails(userId);
+   * holding that has real history (or a specific subset, via `assetIds`),
+   * aligned on common dates. */
+  private async getPortfolioReturnSeries(userId: string, assetIds?: string[]): Promise<{ portfolioReturns: DailyReturn[]; portfolioValues: number[]; initialValue: number }> {
+    const assets = await this.loadAssetsWithTypeDetails(userId, assetIds);
     const seriesByAsset: Array<{ value: number; series: DailyReturn[] }> = [];
     for (const a of assets) {
       const series = await this.getReturnsForAsset(a);

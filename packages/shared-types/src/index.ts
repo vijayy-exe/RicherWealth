@@ -17,3 +17,14 @@ export * from "./calc/amortization";
 // Phase 10 — income tracking, expense/bank-sync
 export * from "./schemas/income.schema";
 export * from "./calc/recurring-amount";
+// Phase 13 — goals module + calculator suite (SIP/Lumpsum/CompoundInterest/
+// RD/FD reuse compound-growth.ts; EMI/Mortgage/Loan Comparison reuse
+// amortization.ts/mortgage.ts; Goal Planning reuses compound-growth.ts's
+// reverse solves)
+export * from "./calc/compound-growth";
+export * from "./calc/swp";
+export * from "./calc/inflation";
+export * from "./calc/retirement";
+export * from "./calc/tax";
+export * from "./calc/currency";
+export * from "./calc/mortgage";

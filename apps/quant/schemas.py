@@ -49,3 +49,7 @@ class MonteCarloRequest(BaseModel):
     dt: float = Field(default=1.0, gt=0)
     seed: int | None = None
     percentiles: list[float] = Field(default_factory=lambda: [5, 25, 50, 75, 95])
+    # Phase 13 — goal success-probability simulation. Both default to the
+    # Phase 11 behavior (no contribution, no target) when omitted.
+    contributionPerPeriod: float = Field(default=0.0, ge=0)
+    targetValue: float | None = Field(default=None, gt=0)

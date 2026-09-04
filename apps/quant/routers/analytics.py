@@ -79,6 +79,8 @@ async def monte_carlo(req: MonteCarloRequest):
             dt=req.dt,
             seed=req.seed,
             percentiles=tuple(req.percentiles),
+            contribution_per_period=req.contributionPerPeriod,
+            target_value=req.targetValue,
         )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))

@@ -158,6 +158,49 @@ export function generateAmortizationSchedule(input: AmortizationInput): Amortiza
 }
 
 /**
+ * EMI calculator: the scheduled periodic payment for a loan, with no extra
+ * fields — a thin, clearly-named entry point over `generateAmortizationSchedule`
+ * for Phase 13's EMI calculator (same math, not a reimplementation).
+ */
+export function computeEmi(principal: number, annualRatePct: number, tenureMonths: number, paymentFrequency: PaymentFrequency = "MONTHLY"): number {
+  return generateAmortizationSchedule({ principal, annualRatePct, tenureMonths, paymentFrequency }).scheduledPayment;
+}
+
+export interface LoanComparisonOffer {
+  /** Caller-supplied label, e.g. a bank/lender name — passed through unchanged for display. */
+  label: string;
+  principal: number;
+  annualRatePct: number;
+  tenureMonths: number;
+  paymentFrequency?: PaymentFrequency;
+}
+
+export interface LoanComparisonResult {
+  label: string;
+  scheduledPayment: number;
+  totalInterest: number;
+  totalPaid: number;
+}
+
+/**
+ * Loan Comparison calculator: run the SAME amortization engine once per
+ * offer and rank by total interest paid — the standard "which loan actually
+ * costs less" comparison (a lower EMI from a longer tenure can still cost
+ * more in total interest, which is exactly what this surfaces).
+ */
+export function compareLoans(offers: LoanComparisonOffer[]): { results: LoanComparisonResult[]; cheapestIndex: number } {
+  const results = offers.map((offer): LoanComparisonResult => {
+    const r = generateAmortizationSchedule(offer);
+    return { label: offer.label, scheduledPayment: r.scheduledPayment, totalInterest: r.totalInterest, totalPaid: r.totalPaid };
+  });
+  let cheapestIndex = 0;
+  for (let i = 1; i < results.length; i++) {
+    if ((results[i]?.totalInterest ?? Infinity) < (results[cheapestIndex]?.totalInterest ?? Infinity)) cheapestIndex = i;
+  }
+  return { results, cheapestIndex };
+}
+
+/**
  * Remaining balance, interest paid to date, and interest-to-principal ratio
  * at an arbitrary point in time. `period` is 1-indexed; periods beyond the
  * end of the schedule clamp to the final (payoff) row.

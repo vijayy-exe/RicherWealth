@@ -4,6 +4,8 @@ import {
   calculatePrepaymentSavings,
   calculateCreditCardMinimumPayment,
   projectCreditCardMinimumPayoff,
+  computeEmi,
+  compareLoans,
 } from "./amortization";
 
 describe("generateAmortizationSchedule", () => {
@@ -183,5 +185,35 @@ describe("projectCreditCardMinimumPayoff", () => {
     });
     expect(result.neverPaysOff).toBe(true);
     expect(result.monthsToPayoff).toBeLessThan(600);
+  });
+});
+
+describe("computeEmi (Phase 13 EMI calculator)", () => {
+  it("matches the same $200,000 @ 6% / 30yr reference EMI as generateAmortizationSchedule", () => {
+    const emi = computeEmi(200_000, 6, 360, "MONTHLY");
+    expect(emi).toBeCloseTo(1199.10, 1);
+  });
+});
+
+describe("compareLoans (Phase 13 Loan Comparison calculator)", () => {
+  it("identifies the offer with lower total interest as cheapest even when its EMI is higher", () => {
+    // Offer A: shorter tenure, higher EMI, less total interest.
+    // Offer B: longer tenure, lower EMI, more total interest.
+    const { results, cheapestIndex } = compareLoans([
+      { label: "15-year @ 6%", principal: 300_000, annualRatePct: 6, tenureMonths: 180 },
+      { label: "30-year @ 6%", principal: 300_000, annualRatePct: 6, tenureMonths: 360 },
+    ]);
+    expect(results).toHaveLength(2);
+    expect(results[0]!.scheduledPayment).toBeGreaterThan(results[1]!.scheduledPayment);
+    expect(results[0]!.totalInterest).toBeLessThan(results[1]!.totalInterest);
+    expect(cheapestIndex).toBe(0);
+  });
+
+  it("matches each offer's individual generateAmortizationSchedule result exactly", () => {
+    const offer = { label: "Test", principal: 500_000, annualRatePct: 8.5, tenureMonths: 240 };
+    const direct = generateAmortizationSchedule(offer);
+    const { results } = compareLoans([offer]);
+    expect(results[0]!.scheduledPayment).toBe(direct.scheduledPayment);
+    expect(results[0]!.totalInterest).toBe(direct.totalInterest);
   });
 });

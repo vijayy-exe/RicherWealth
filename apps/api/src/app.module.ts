@@ -34,6 +34,11 @@ import { TransactionsModule } from "./transactions/transactions.module";
 import { BankSyncModule } from "./bank-sync/bank-sync.module";
 // Phase 11
 import { AnalyticsModule } from "./analytics/analytics.module";
+// Phase 12
+import { RiskEngineModule } from "./risk/risk-engine.module";
+// Phase 13
+import { GoalsModule } from "./goals/goals.module";
+import { CalculatorsModule } from "./calculators/calculators.module";
 
 @Module({
   imports: [
@@ -86,6 +91,11 @@ import { AnalyticsModule } from "./analytics/analytics.module";
     BankSyncModule,
     // Phase 11
     AnalyticsModule,
+    // Phase 12
+    RiskEngineModule,
+    // Phase 13
+    GoalsModule,
+    CalculatorsModule,
 
     // Phase 3+
     // AssetsModule,

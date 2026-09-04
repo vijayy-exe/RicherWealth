@@ -78,6 +78,18 @@ enum LoanPaymentFrequency {
   ANNUALLY
 }
 
+/// Phase 13: financial-goal type discriminator
+enum GoalType {
+  HOUSE
+  MARRIAGE
+  VACATION
+  EDUCATION
+  EMERGENCY_FUND
+  RETIREMENT
+  CAR
+  CUSTOM
+}
+
 /// Household role for RBAC
 enum HouseholdRole {
   OWNER
@@ -139,6 +151,10 @@ model User {
   incomes               Income[]
   categoryRules         CategoryRule[]
   plaidItems            PlaidItem[]
+  // Phase 12
+  riskScoreSnapshots    RiskScoreSnapshot[]
+  // Phase 13
+  goals                 Goal[]
 
   @@index([email])
   @@index([supabaseId])
@@ -342,6 +358,55 @@ model NetWorthSnapshot {
   @@unique([userId, snapshotDate])
   @@index([userId, snapshotDate])
   @@map("net_worth_snapshots")
+}
+
+/// Phase 12: one row per user per day, written whenever the risk profile is
+/// (re)computed — mirrors NetWorthSnapshot's upsert-by-date pattern so the
+/// Risk page can chart a historical trend the same way the dashboard charts
+/// net worth. subScores stores the full RiskSubScore[] (score/level/
+/// explanation per dimension) so the trend chart can show dimension-level
+/// history later without a schema change.
+model RiskScoreSnapshot {
+  id           String   @id @default(cuid())
+  userId       String
+  overallScore Float
+  subScores    Json
+  snapshotDate DateTime @db.Date // date only — one row per user per day
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, snapshotDate])
+  @@index([userId, snapshotDate])
+  @@map("risk_score_snapshots")
+}
+
+/// Phase 13: a savings/investment goal with a target amount and date.
+/// Progress is tracked two ways, combinable: `linkedAssetIds` (summed live
+/// from those Asset rows' currentValue, base-currency-converted) plus
+/// `standaloneProgressAmount` (a plain manually-updated figure, for goals
+/// with no dedicated holding — e.g. a "Vacation" goal saved for in a
+/// generic bank account not tracked as its own Asset). Either or both may
+/// be used; GoalsService.getProgress() sums whichever apply.
+model Goal {
+  id                       String    @id @default(cuid())
+  userId                   String
+  type                     GoalType
+  name                     String
+  targetAmount             Decimal   @db.Decimal(20, 6)
+  targetDate               DateTime  @db.Date
+  currencyCode             String
+  linkedAssetIds           String[]  @default([])
+  standaloneProgressAmount Decimal   @default(0) @db.Decimal(20, 6)
+  notes                    String?
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+  deletedAt                DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, deletedAt])
+  @@map("goals")
 }
 
 /// Forex rate cache — refreshed hourly by ForexService

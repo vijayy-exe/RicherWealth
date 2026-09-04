@@ -5,7 +5,7 @@ import time
 import numpy as np
 import pytest
 
-from analytics.monte_carlo import run_monte_carlo, simulate_paths, summarize_paths
+from analytics.monte_carlo import run_monte_carlo, simulate_paths, summarize_paths, probability_of_target
 
 
 def test_reproducible_with_seed():
@@ -80,3 +80,72 @@ def test_rejects_invalid_input():
         simulate_paths(100_000, mu=0.01, sigma=0.02, periods=0)
     with pytest.raises(ValueError):
         simulate_paths(-100, mu=0.01, sigma=0.02, periods=10)
+
+
+# ─── Phase 13: goal simulation (periodic contribution + target probability) ─
+
+
+def test_zero_volatility_with_contribution_is_exact_arithmetic():
+    # mu=0, sigma=0 -> exp(drift+vol*z) == exp(0) == 1 exactly, every path.
+    # S_t = S_{t-1}*1 + 1000 -> after 12 periods: 100000 + 1000*12 = 112000, exactly.
+    paths = simulate_paths(100_000, mu=0.0, sigma=0.0, periods=12, n_simulations=50, seed=0, contribution_per_period=1_000)
+    assert np.all(paths[:, -1] == pytest.approx(112_000, rel=1e-9))
+
+
+def test_probability_of_target_is_exact_at_the_deterministic_boundary():
+    paths = simulate_paths(100_000, mu=0.0, sigma=0.0, periods=12, n_simulations=50, seed=0, contribution_per_period=1_000)
+    final_values = paths[:, -1]
+    # Deterministic final value is exactly 112,000 (see test above).
+    assert probability_of_target(final_values, 112_000) == 1.0  # target met exactly -> counts as success
+    assert probability_of_target(final_values, 112_000.01) == 0.0  # just above -> no path clears it
+    assert probability_of_target(final_values, 111_999.99) == 1.0  # just below -> every path clears it
+
+
+def test_run_monte_carlo_includes_probability_only_when_target_given():
+    without_target = run_monte_carlo(100_000, mu=0.0005, sigma=0.01, periods=12, n_simulations=1_000, seed=1)
+    assert "probabilityOfTarget" not in without_target
+
+    with_target = run_monte_carlo(100_000, mu=0.0005, sigma=0.01, periods=12, n_simulations=1_000, seed=1, target_value=150_000)
+    assert "probabilityOfTarget" in with_target
+    assert 0.0 <= with_target["probabilityOfTarget"] <= 1.0
+
+
+def test_probability_of_target_increases_with_higher_contribution():
+    # Holding everything else fixed, a higher periodic contribution should
+    # raise (never lower) the probability of reaching the same target.
+    low_contribution = run_monte_carlo(
+        50_000, mu=0.006, sigma=0.04, periods=60, n_simulations=20_000, seed=99,
+        contribution_per_period=2_000, target_value=500_000,
+    )
+    high_contribution = run_monte_carlo(
+        50_000, mu=0.006, sigma=0.04, periods=60, n_simulations=20_000, seed=99,
+        contribution_per_period=5_000, target_value=500_000,
+    )
+    assert high_contribution["probabilityOfTarget"] > low_contribution["probabilityOfTarget"]
+
+
+def test_probability_of_target_increases_with_longer_horizon():
+    # Holding contribution fixed, more periods to compound and contribute
+    # should raise (never lower) the probability of reaching a fixed target.
+    short_horizon = run_monte_carlo(
+        50_000, mu=0.006, sigma=0.04, periods=36, n_simulations=20_000, seed=7,
+        contribution_per_period=3_000, target_value=500_000,
+    )
+    long_horizon = run_monte_carlo(
+        50_000, mu=0.006, sigma=0.04, periods=84, n_simulations=20_000, seed=7,
+        contribution_per_period=3_000, target_value=500_000,
+    )
+    assert long_horizon["probabilityOfTarget"] > short_horizon["probabilityOfTarget"]
+
+
+def test_contribution_path_completes_within_5_seconds_for_a_typical_goal_horizon():
+    # Goal horizons are monthly and rarely exceed 40 years (480 periods) —
+    # the per-period Python loop this path uses (see monte_carlo.py) still
+    # needs to comfortably clear the same 5s bound as the fast path.
+    start = time.perf_counter()
+    run_monte_carlo(
+        100_000, mu=0.007, sigma=0.04, periods=480, n_simulations=20_000, seed=1,
+        contribution_per_period=10_000, target_value=5_000_000,
+    )
+    elapsed = time.perf_counter() - start
+    assert elapsed < 5.0, f"Goal Monte Carlo took {elapsed:.2f}s, exceeds the 5s bound"
