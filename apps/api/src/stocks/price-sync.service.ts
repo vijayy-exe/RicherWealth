@@ -22,9 +22,11 @@ export interface LivePrice {
   isStale: boolean;
 }
 
-/** Redis TTL constants (seconds) */
-const MARKET_HOURS_TTL = 60 * 15;   // 15 min during market hours
-const OFF_HOURS_TTL = 60 * 60 * 6;  // 6 hr off-hours
+/** Redis TTL constants (seconds) — exported so other market-data services
+ * (e.g. market-intelligence's world-indices widget) share the exact same
+ * cadence instead of inventing a competing refresh window. */
+export const MARKET_HOURS_TTL = 60 * 15;   // 15 min during market hours
+export const OFF_HOURS_TTL = 60 * 60 * 6;  // 6 hr off-hours
 const SEARCH_CACHE_TTL = 60 * 60 * 24; // 24h for ticker search
 
 export interface TickerSearchResult {
@@ -41,7 +43,7 @@ function redisKey(ticker: string, exchange: string): string {
   return `price:${exchange.toUpperCase()}:${ticker.toUpperCase()}`;
 }
 
-function isMarketHours(): boolean {
+export function isMarketHours(): boolean {
   const now = new Date();
   const day = now.getUTCDay();
   const hour = now.getUTCHours();
@@ -49,7 +51,7 @@ function isMarketHours(): boolean {
   return hour >= 9 && hour < 17;
 }
 
-function cacheTTL(): number {
+export function cacheTTL(): number {
   return isMarketHours() ? MARKET_HOURS_TTL : OFF_HOURS_TTL;
 }
 

@@ -5,9 +5,13 @@ import { MemoryCacheService } from "../stocks/memory-cache.service";
 
 const DAY_TTL_S = 60 * 60 * 24;
 const CACHE_KEY = "macro-data:inflation:CPIAUCSL";
-// Last-resort static fallback — a plausible recent-years US CPI YoY figure.
-// Never presented as live data (isLive: false).
+const FEDFUNDS_CACHE_KEY = "macro-data:fedfunds:FEDFUNDS";
+const GDP_CACHE_KEY = "macro-data:gdp:A191RL1Q225SBEA";
+// Last-resort static fallbacks — plausible recent-years figures. Never
+// presented as live data (isLive: false on every fallback response).
 const FALLBACK_INFLATION_PCT = 3.5;
+const FALLBACK_FEDFUNDS_PCT = 5.0;
+const FALLBACK_GDP_GROWTH_PCT = 2.5;
 
 interface CacheAdapter {
   get(key: string): Promise<string | null>;
@@ -20,13 +24,35 @@ export interface InflationRate {
   fetchedAt: string;
 }
 
+export interface FedFundsRate {
+  ratePct: number; // effective federal funds rate, e.g. 5.33
+  isLive: boolean;
+  fetchedAt: string;
+}
+
+export interface GdpGrowthRate {
+  growthPct: number; // real GDP growth, annualized quarter-over-quarter, e.g. 2.8
+  isLive: boolean;
+  fetchedAt: string;
+}
+
 /**
- * Inflation input for Phase 12's inflation-risk sub-score: US CPI-U
- * (FRED series CPIAUCSL), requested with `units=pc1` so FRED itself returns
- * the year-over-year percent change — no manual differencing needed.
+ * Macro/economic-indicator data for Phase 12's inflation-risk sub-score AND
+ * Phase 14's economic-calendar widget — both consume this one service so
+ * there is exactly one FRED-backed source of truth for each series (no
+ * competing fetch/cache for the same number). Three US series today:
+ *   - CPIAUCSL (Consumer Price Index, `units=pc1` so FRED itself returns
+ *     the YoY percent change — no manual differencing needed) — inflation.
+ *   - FEDFUNDS (Effective Federal Funds Rate, monthly) — the Fed rate shown
+ *     on the economic calendar.
+ *   - A191RL1Q225SBEA (Real GDP, percent change from preceding period,
+ *     annualized) — already the "GDP growth rate" figure, not the raw
+ *     $-trillions GDP level, since that's what an economic calendar means
+ *     by "GDP".
  * Reuses the exact Redis-with-in-memory-fallback caching pattern as
- * RiskFreeRateService (same FRED_API_KEY, same 24h TTL — this is a
- * monthly-published series, so refetching more often would be pointless).
+ * RiskFreeRateService (same FRED_API_KEY, same 24h TTL — these are
+ * monthly/quarterly-published series, so refetching more often would be
+ * pointless).
  */
 @Injectable()
 export class MacroDataService implements OnModuleInit {
@@ -73,28 +99,55 @@ export class MacroDataService implements OnModuleInit {
     const cached = await this.cache.get(CACHE_KEY);
     if (cached) return JSON.parse(cached) as InflationRate;
 
-    const fetched = await this.fetchFromFred();
-    const result: InflationRate = fetched ?? {
-      yoyPct: FALLBACK_INFLATION_PCT,
-      isLive: false,
-      fetchedAt: new Date().toISOString(),
-    };
+    const value = await this.fetchSeriesLatest("CPIAUCSL", "pc1");
+    const result: InflationRate = value !== null
+      ? { yoyPct: value, isLive: true, fetchedAt: new Date().toISOString() }
+      : { yoyPct: FALLBACK_INFLATION_PCT, isLive: false, fetchedAt: new Date().toISOString() };
     await this.cache.set(CACHE_KEY, JSON.stringify(result), DAY_TTL_S);
     return result;
   }
 
-  private async fetchFromFred(): Promise<InflationRate | null> {
+  /** Effective Federal Funds Rate, 24h cached. Used by Phase 14's economic calendar. */
+  async getFedFundsRate(): Promise<FedFundsRate> {
+    const cached = await this.cache.get(FEDFUNDS_CACHE_KEY);
+    if (cached) return JSON.parse(cached) as FedFundsRate;
+
+    const value = await this.fetchSeriesLatest("FEDFUNDS");
+    const result: FedFundsRate = value !== null
+      ? { ratePct: value, isLive: true, fetchedAt: new Date().toISOString() }
+      : { ratePct: FALLBACK_FEDFUNDS_PCT, isLive: false, fetchedAt: new Date().toISOString() };
+    await this.cache.set(FEDFUNDS_CACHE_KEY, JSON.stringify(result), DAY_TTL_S);
+    return result;
+  }
+
+  /** Real GDP growth (annualized QoQ %), 24h cached. Used by Phase 14's economic calendar. */
+  async getGdpGrowthRate(): Promise<GdpGrowthRate> {
+    const cached = await this.cache.get(GDP_CACHE_KEY);
+    if (cached) return JSON.parse(cached) as GdpGrowthRate;
+
+    const value = await this.fetchSeriesLatest("A191RL1Q225SBEA");
+    const result: GdpGrowthRate = value !== null
+      ? { growthPct: value, isLive: true, fetchedAt: new Date().toISOString() }
+      : { growthPct: FALLBACK_GDP_GROWTH_PCT, isLive: false, fetchedAt: new Date().toISOString() };
+    await this.cache.set(GDP_CACHE_KEY, JSON.stringify(result), DAY_TTL_S);
+    return result;
+  }
+
+  /** Shared FRED fetch: latest non-"." observation for a series, optionally
+   * transformed by FRED itself via `units` (e.g. "pc1" = % change from a
+   * year ago). Returns null (never a fabricated number) on any failure. */
+  private async fetchSeriesLatest(seriesId: string, units?: string): Promise<number | null> {
     const apiKey = this.config.get<string>("FRED_API_KEY");
     if (!apiKey) {
-      this.logger.warn("FRED_API_KEY not configured — using fallback inflation rate");
+      this.logger.warn(`FRED_API_KEY not configured — using fallback for ${seriesId}`);
       return null;
     }
     try {
       const url = "https://api.stlouisfed.org/fred/series/observations";
       const res = await axios.get<{ observations?: Array<{ date: string; value: string }> }>(url, {
         params: {
-          series_id: "CPIAUCSL",
-          units: "pc1", // FRED computes % change from a year ago for us
+          series_id: seriesId,
+          ...(units ? { units } : {}),
           api_key: apiKey,
           file_type: "json",
           sort_order: "desc",
@@ -105,12 +158,12 @@ export class MacroDataService implements OnModuleInit {
       const observations = res.data.observations ?? [];
       const latestValid = observations.find((o) => o.value !== ".");
       if (!latestValid) return null;
-      const yoyPct = Number(latestValid.value);
-      if (!Number.isFinite(yoyPct)) return null;
-      this.logger.log(`FRED CPIAUCSL (YoY) ✓ ${latestValid.date}: ${yoyPct}%`);
-      return { yoyPct, isLive: true, fetchedAt: new Date().toISOString() };
+      const value = Number(latestValid.value);
+      if (!Number.isFinite(value)) return null;
+      this.logger.log(`FRED ${seriesId} ✓ ${latestValid.date}: ${value}`);
+      return value;
     } catch (err) {
-      this.logger.warn(`FRED inflation fetch failed: ${String(err)}`);
+      this.logger.warn(`FRED ${seriesId} fetch failed: ${String(err)}`);
       return null;
     }
   }

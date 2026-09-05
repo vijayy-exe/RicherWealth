@@ -39,6 +39,12 @@ import { RiskEngineModule } from "./risk/risk-engine.module";
 // Phase 13
 import { GoalsModule } from "./goals/goals.module";
 import { CalculatorsModule } from "./calculators/calculators.module";
+// Phase 14
+import { MarketIntelligenceModule } from "./market-intelligence/market-intelligence.module";
+import { NewsModule } from "./news/news.module";
+// Phase 15
+import { TaxModule } from "./tax/tax.module";
+import { VaultModule } from "./vault/vault.module";
 
 @Module({
   imports: [
@@ -96,6 +102,12 @@ import { CalculatorsModule } from "./calculators/calculators.module";
     // Phase 13
     GoalsModule,
     CalculatorsModule,
+    // Phase 14
+    MarketIntelligenceModule,
+    NewsModule,
+    // Phase 15
+    TaxModule,
+    VaultModule,
 
     // Phase 3+
     // AssetsModule,

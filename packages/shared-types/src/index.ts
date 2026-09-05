@@ -28,3 +28,29 @@ export * from "./calc/retirement";
 export * from "./calc/tax";
 export * from "./calc/currency";
 export * from "./calc/mortgage";
+// Phase 14 — market intelligence & news (types + pure dedup/relevance logic,
+// shared so apps/api's NewsService and apps/web's Markets page never drift)
+export * from "./market-intel/types";
+export * from "./market-intel/dedup";
+export * from "./market-intel/relevance";
+// Phase 15 — tax center: versioned per-country config (add a country by
+// adding a JSON file, not touching calc code) + pure FIFO/capital-gains/
+// harvesting logic, shared between apps/api's authoritative TaxService and
+// any frontend "what if I sell this" preview.
+export * from "./tax-config";
+export * from "./calc/capital-gains";
+export * from "./tax/types";
+// Phase 15 extension — ITR document upload & analysis: FieldWithConfidence-
+// wrapped parsed data, the schema-driven ITR-1/2/3/4 text parser (shared by
+// both the pdf-parse and tesseract.js OCR extraction paths), and the
+// read-only ITR-vs-tracked-data discrepancy comparison.
+export * from "./tax/itr-types";
+export * from "./tax/itr-parser";
+export * from "./tax/itr-discrepancy";
+export * from "./tax-config/schema";
+// Phase 16 — zero-knowledge encrypted document vault: pure isomorphic
+// AES-256-GCM + PBKDF2 crypto (browser-usable, Node/Jest-testable) and
+// shared DTOs/category rules. apps/api never imports ./vault/crypto —
+// the server only ever stores/serves ciphertext + metadata.
+export * from "./vault/crypto";
+export * from "./vault/types";

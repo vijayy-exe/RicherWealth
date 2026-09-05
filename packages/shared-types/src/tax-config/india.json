@@ -1,0 +1,26 @@
+{
+  "countryCode": "IN",
+  "countryName": "India",
+  "currencyCode": "INR",
+  "asOf": "2024-07-23",
+  "source": "Union Budget 2024 capital-gains regime (effective 23 Jul 2024): listed-equity/equity-MF LTCG 12.5% with a ₹1,25,000/FY exemption (Section 112A, as amended by Finance (No. 2) Act 2024), STCG 20% (Section 111A). Crypto (Virtual Digital Assets) taxed flat 30% under Section 115BBH regardless of holding period, and Section 115BBH(2) expressly disallows setting off a VDA loss against any other income, including another VDA's gains.",
+  "financialYearStartMonth": 4,
+  "financialYearStartDay": 1,
+  "holdingPeriodRules": [
+    { "holdingType": "STOCK", "longTermThresholdDays": 365, "thresholdLabel": "> 12 months (listed equity)" },
+    { "holdingType": "MUTUAL_FUND", "longTermThresholdDays": 365, "thresholdLabel": "> 12 months — assumes equity-oriented fund; debt-fund taxation (slab rate, no LTCG concession, per Finance Act 2023) is NOT modeled separately, see notes" },
+    { "holdingType": "CRYPTO", "longTermThresholdDays": null, "thresholdLabel": "N/A — flat 30% regardless of holding period (Section 115BBH)" }
+  ],
+  "capitalGainsRates": [
+    { "holdingType": "STOCK", "flatRatePct": null, "shortTermRatePct": 20, "longTermRatePct": 12.5, "longTermExemptionAmount": 125000, "lossOffsetAllowed": true },
+    { "holdingType": "MUTUAL_FUND", "flatRatePct": null, "shortTermRatePct": 20, "longTermRatePct": 12.5, "longTermExemptionAmount": 125000, "lossOffsetAllowed": true },
+    { "holdingType": "CRYPTO", "flatRatePct": 30, "shortTermRatePct": null, "longTermRatePct": null, "longTermExemptionAmount": 0, "lossOffsetAllowed": false }
+  ],
+  "dividendTreatment": "ORDINARY_INCOME_SLAB",
+  "notes": [
+    "Not tax advice. No cess (4% Health & Education Cess) or surcharge is added on top of these rates. No indexation benefit is modeled (removed for most assets by the 2024 Budget, with a grandfathered pre-2001 exception not modeled here).",
+    "MUTUAL_FUND rows assume an equity-oriented scheme (>=65% equity allocation). Debt-oriented mutual fund units acquired on/after 1 Apr 2023 are, per the Finance Act 2023 amendment, taxed entirely at the investor's slab rate with NO long-term concessional rate regardless of holding period — this app does not currently distinguish equity vs. debt mutual funds (MutualFundHolding has no such flag), so debt-fund users will see an incorrect (too favorable) LTCG rate here. Flagged as a known limitation, not silently wrong.",
+    "CRYPTO: Section 115BBH also disallows deducting any expense (other than acquisition cost) and disallows loss set-off against ANY other income, including gains on a different crypto asset — lossOffsetAllowed: false on this row means the tax-loss-harvesting scan MUST exclude Indian crypto holdings from harvesting suggestions entirely, not just skip offsetting them.",
+    "1% TDS on crypto transfers (Section 194S) is not modeled — this is a withholding mechanism, not a final tax liability, and doesn't change the totals this report shows."
+  ]
+}

@@ -26,16 +26,18 @@ export default function LoginPage() {
     setError(null);
     setIsLoading(true);
     try {
-      const isPlaceholder = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").includes("wuxmikbwwcmiadogavac");
-      if (isPlaceholder) {
-        handleDevLogin();
-        return;
-      }
+      // Always attempt real Supabase auth here — this project's Supabase
+      // instance is real (confirmed: password-grant against it succeeds),
+      // it just shares a URL fragment with an older placeholder check that
+      // used to short-circuit straight to the dev-login stub before ever
+      // trying a real sign-in. That meant a correct email/password could
+      // never actually authenticate. The "Quick Demo Login" button below
+      // still exists for that stub flow if it's ever wanted.
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) { setError(error.message); return; }
       router.push("/dashboard");
-    } catch {
-      handleDevLogin();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Sign-in failed — please try again.");
     } finally {
       setIsLoading(false);
     }

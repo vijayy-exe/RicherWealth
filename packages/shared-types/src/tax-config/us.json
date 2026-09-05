@@ -1,0 +1,26 @@
+{
+  "countryCode": "US",
+  "countryName": "United States",
+  "currencyCode": "USD",
+  "asOf": "2024-01-01",
+  "source": "IRS: capital gains held > 1 year are long-term (26 U.S.C. § 1222); simplified single-filer 2024 LTCG brackets (0%/15%/20%) per IRS Rev. Proc. 2023-34. Crypto is treated as property (IRS Notice 2014-21), same holding-period rule as stocks. Short-term gains and non-qualified dividends are taxed as ordinary income (not modeled here as a slab table — surfaced as null, meaning 'use the filer's marginal rate', not 0%).",
+  "financialYearStartMonth": 1,
+  "financialYearStartDay": 1,
+  "holdingPeriodRules": [
+    { "holdingType": "STOCK", "longTermThresholdDays": 365, "thresholdLabel": "> 1 year" },
+    { "holdingType": "MUTUAL_FUND", "longTermThresholdDays": 365, "thresholdLabel": "> 1 year" },
+    { "holdingType": "CRYPTO", "longTermThresholdDays": 365, "thresholdLabel": "> 1 year (IRS treats crypto as property)" }
+  ],
+  "capitalGainsRates": [
+    { "holdingType": "STOCK", "flatRatePct": null, "shortTermRatePct": null, "longTermRatePct": 15, "longTermExemptionAmount": 0, "lossOffsetAllowed": true },
+    { "holdingType": "MUTUAL_FUND", "flatRatePct": null, "shortTermRatePct": null, "longTermRatePct": 15, "longTermExemptionAmount": 0, "lossOffsetAllowed": true },
+    { "holdingType": "CRYPTO", "flatRatePct": null, "shortTermRatePct": null, "longTermRatePct": 15, "longTermExemptionAmount": 0, "lossOffsetAllowed": true }
+  ],
+  "dividendTreatment": "SAME_AS_LONG_TERM_GAINS",
+  "notes": [
+    "Not tax advice. No state/local tax, no Net Investment Income Tax (3.8% NIIT), no AMT, no wash-sale disallowance is modeled.",
+    "longTermRatePct: 15 is the middle 2024 single-filer LTCG bracket ($47,026–$518,900 taxable income); the 0% and 20% brackets are not modeled per-holding since they depend on total taxable income, not just the gain itself.",
+    "shortTermRatePct is null because short-term gains and non-qualified dividends are taxed at the filer's ordinary marginal rate, not a flat capital-gains rate — the report shows the gain amount and flags it 'taxed as ordinary income', not a computed tax figure.",
+    "Wash-sale rule (disallowing a loss if a substantially identical security is repurchased within 30 days) is NOT enforced by the tax-loss harvesting scan in this phase — a real gap, documented in STATUS.md, not silently ignored."
+  ]
+}

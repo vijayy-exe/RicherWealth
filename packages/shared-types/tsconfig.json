@@ -5,7 +5,14 @@
     "moduleResolution": "Bundler",
     "declaration": true,
     "declarationMap": true,
-    "outDir": "./dist"
+    "outDir": "./dist",
+    // DOM added (overriding the base's ES2022-only lib, this package only —
+    // does not affect apps/api or apps/web's own tsconfigs) for Phase 16's
+    // vault/crypto.ts: CryptoKey/TextEncoder/TextDecoder/BufferSource/atob
+    // are standard Web Crypto types this isomorphic module deliberately
+    // targets (works in both the browser and Node 19+, which also exposes
+    // these globals).
+    "lib": ["ES2022", "DOM"]
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]

@@ -48,3 +48,8 @@ coverage/
 # TypeScript
 *.tsbuildinfo
 Users/
+
+# tesseract.js downloads its English language model to the process cwd on
+# first OCR call (Phase 15 ITR extension, apps/api/src/tax/itr/) — a ~5MB
+# generated artifact, not source.
+eng.traineddata

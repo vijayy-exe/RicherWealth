@@ -11,6 +11,8 @@ import { AnalyticsModule } from "../analytics/analytics.module";
   imports: [StocksModule, NetWorthModule, LiabilitiesModule, AnalyticsModule],
   controllers: [RiskEngineController],
   providers: [RiskEngineService, MacroDataService],
-  exports: [RiskEngineService],
+  // MacroDataService also exported for Phase 14's economic-calendar widget
+  // (reuses the same FRED-backed inflation/Fed-funds/GDP series).
+  exports: [RiskEngineService, MacroDataService],
 })
 export class RiskEngineModule {}

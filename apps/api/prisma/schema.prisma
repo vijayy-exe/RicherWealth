@@ -120,6 +120,19 @@ model User {
   onboardingCompleted Boolean   @default(false)
   /// Stores the "what do you want to track" quick-pick selections
   trackingPreferences Json      @default("[]")
+  /// Phase 16 zero-knowledge vault: PBKDF2 salt (base64), NOT secret, safe to
+  /// store server-side — the vault passphrase itself is never sent/stored.
+  /// Regenerating this orphans every existing VaultDocument (their AES key
+  /// can no longer be re-derived), so VaultService only ever creates it once.
+  vaultKeySaltB64     String?
+  /// AES-GCM ciphertext/IV of a known constant, encrypted client-side at
+  /// vault setup with the just-derived key. Lets the "unlock vault" screen
+  /// verify a re-entered passphrase immediately (GCM auth-tag failure on
+  /// decrypt = wrong passphrase) without needing a real document to exist.
+  /// Reveals nothing about the passphrase or any document content.
+  vaultCanaryB64      String?
+  vaultCanaryIvB64    String?
+  vaultSetupAt        DateTime?
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
   deletedAt           DateTime?
@@ -155,6 +168,28 @@ model User {
   riskScoreSnapshots    RiskScoreSnapshot[]
   // Phase 13
   goals                 Goal[]
+  // Phase 14
+  ipoListingsCreated    IpoListing[]
+  // Phase 15
+  taxLots               TaxLot[]
+  taxLotDisposals       TaxLotDisposal[]
+  itrDocuments          ItrDocument[]
+  // Phase 16
+  vaultDocuments        VaultDocument[]
+  // Phase 17
+  stockPriceAlerts      StockPriceAlert[]
+  notifications         Notification[]
+  notificationPrefs     NotificationPreference[]
+  pushTokens            PushToken[]
+
+  /// Phase 17 quiet hours — local "HH:mm" strings interpreted in
+  /// notifyQuietHoursTimezone (IANA name). Only gates push/email delivery;
+  /// in-app notifications are never suppressed (they're not interruptive —
+  /// they just sit in the bell until opened). Null on either bound means
+  /// quiet hours are off.
+  notifyQuietHoursStart    String?
+  notifyQuietHoursEnd      String?
+  notifyQuietHoursTimezone String  @default("UTC")
 
   @@index([email])
   @@index([supabaseId])
@@ -263,6 +298,10 @@ model Asset {
   // Phase 8
   realEstateDetail     RealEstateDetail?
   revaluations         AssetRevaluation[]
+  // Phase 15
+  taxLots              TaxLot[]
+  // Phase 16
+  vaultDocuments       VaultDocument[]
 
   @@index([userId])
   @@index([userId, type])
@@ -947,4 +986,371 @@ model PlaidItem {
 
   @@index([userId])
   @@map("plaid_items")
+}
+
+// ─── Phase 14 — Market Intelligence & News ─────────────────────────────────
+
+/// Lifecycle status of a curated IPO calendar entry.
+enum IpoStatus {
+  UPCOMING
+  OPEN
+  CLOSED
+  LISTED
+  WITHDRAWN
+}
+
+/// A manually curated IPO calendar entry. No free, reliably-callable, global
+/// IPO-calendar API was found (confirmed: NASDAQ/NSE/BSE each publish IPO
+/// data on their own websites with no stable free API; paid providers exist
+/// but weren't in budget for this phase) — per the phase spec, this is an
+/// honest manual-entry feature, not a live sync, and the frontend widget
+/// must say so explicitly rather than implying live data.
+model IpoListing {
+  id             String    @id @default(cuid())
+  companyName    String
+  exchange       String // e.g. "NSE", "BSE", "NASDAQ", "NYSE"
+  expectedDate   DateTime? @db.Date
+  priceRangeMin  Decimal?  @db.Decimal(20, 2)
+  priceRangeMax  Decimal?  @db.Decimal(20, 2)
+  currency       String    @default("USD")
+  status         IpoStatus @default(UPCOMING)
+  notes          String?
+  createdByUserId String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  createdBy User? @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([expectedDate])
+  @@index([status])
+  @@map("ipo_listings")
+}
+
+// ─── Phase 15: Tax Center ──────────────────────────────────────────────────
+//
+// No lot-level cost-basis tracking existed anywhere before this phase:
+// StockHolding/MutualFundHolding/CryptoHolding each store only an aggregate
+// quantity + weighted-average buy price + a single purchase date, and
+// nothing in the stocks/mutual-funds/crypto modules wrote a Transaction
+// record on buy/sell. TaxLot/TaxLotDisposal below are new, real per-lot
+// records — FIFO-consumed on disposal, so capital-gains math is a real
+// query over real rows, not a formula guessing from an aggregate.
+//
+// Pre-existing holdings (created before this phase) have no real lot
+// history to backfill from — TaxLotService creates exactly ONE synthetic
+// lot per existing holding, sized to its full current quantity, dated at
+// its `purchaseDate` (or `createdAt` if that's null), costed at its
+// `avgBuyPrice`/`avgNAV`. This is explicitly flagged `isBackfillEstimate:
+// true` and surfaced as such in every report/UI that touches it — it is
+// NOT precise per-purchase history, just the best available honest
+// approximation, exactly like this repo's other documented placeholders
+// (Phase 2's /50000 divisor, Phase 14's STATIC badges). Going forward, real
+// buy/sell activity recorded through TaxController creates real lots.
+//
+// Dividend income deliberately does NOT get a new table: `Income` already
+// has `sourceType: DIVIDENDS` (unused until now) — a dividend is recorded
+// as a ONE_TIME Income row (per PROJECT_CONTEXT's reuse principle), with
+// `details: { holdingType, ticker }` linking it to the paying security so
+// tax reports can group by holding. See apps/api/src/tax/dividend-tax.service.ts.
+
+enum TaxHoldingType {
+  STOCK
+  MUTUAL_FUND
+  CRYPTO
+}
+
+enum TaxLotStatus {
+  OPEN
+  PARTIALLY_DISPOSED
+  CLOSED
+}
+
+enum CapitalGainsTerm {
+  SHORT
+  LONG
+}
+
+/// One real acquisition lot (a single buy) for a stock/mutual-fund/crypto
+/// holding. `remainingQuantity` is decremented by FIFO disposals; the lot
+/// is fully consumed when it reaches 0.
+model TaxLot {
+  id                 String         @id @default(cuid())
+  userId             String
+  holdingType        TaxHoldingType
+  /// FK to the live Asset row, where one still exists — nullable so a lot
+  /// survives if the holding itself is later deleted (tax history must
+  /// outlive the holding it came from).
+  assetId            String?
+  /// Ticker (stocks), coinId (crypto), or schemeCode (mutual funds) — the
+  /// same identifying string PriceSyncService/CryptoMarketService/mutual
+  /// funds' MFAPI integration already key prices by, so current-price
+  /// lookups for unrealized gain/loss reuse those services directly.
+  ticker             String
+  displayName        String
+  quantity           Decimal        @db.Decimal(28, 10)
+  remainingQuantity  Decimal        @db.Decimal(28, 10)
+  costBasisPerUnit   Decimal        @db.Decimal(20, 6)
+  costBasisCurrency  String
+  acquiredAt         DateTime
+  /// True only for the single synthetic lot backfilled from a pre-existing
+  /// holding's aggregate avgBuyPrice/purchaseDate — see file header comment.
+  isBackfillEstimate Boolean        @default(false)
+  status             TaxLotStatus   @default(OPEN)
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  asset     Asset?           @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  disposals TaxLotDisposal[]
+
+  @@index([userId])
+  @@index([userId, holdingType, ticker])
+  @@index([userId, status])
+  @@map("tax_lots")
+}
+
+/// One disposal (sell) event, consuming quantity from a specific TaxLot.
+/// A single real-world sell that spans multiple lots (FIFO) produces
+/// multiple TaxLotDisposal rows, one per lot consumed.
+model TaxLotDisposal {
+  id                String           @id @default(cuid())
+  taxLotId          String
+  userId            String
+  quantity          Decimal          @db.Decimal(28, 10)
+  proceedsPerUnit   Decimal          @db.Decimal(20, 6)
+  /// Assumed equal to the lot's costBasisCurrency — cross-currency disposals
+  /// are out of scope for this phase (documented, not silently wrong: see
+  /// CapitalGainsService.disposeLot which throws rather than mixing currencies).
+  proceedsCurrency  String
+  disposedAt        DateTime
+  holdingPeriodDays Int
+  term              CapitalGainsTerm
+  realizedGainLoss  Decimal          @db.Decimal(20, 6)
+  notes             String?
+  createdAt         DateTime         @default(now())
+
+  taxLot TaxLot @relation(fields: [taxLotId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, disposedAt])
+  @@index([taxLotId])
+  @@map("tax_lot_disposals")
+}
+
+// ─── Phase 15 extension: ITR document upload & analysis ──────────────────────
+// A user-uploaded income-tax-return document (India ITR-1/2/3/4, PDF or
+// image). `parsedData` is a STAGING area only — see ItrService header
+// comment: nothing here is ever written into TaxLot/TaxLotDisposal/Income.
+// `confirmedAt` marks that the user has reviewed/corrected the parse; the
+// document and its parsedData are used only for the cross-check comparison
+// against CapitalGainsService/Income, never to mutate financial records.
+
+enum ItrExtractionStatus {
+  PENDING
+  PROCESSING
+  EXTRACTED_AWAITING_REVIEW
+  CONFIRMED
+  FAILED
+}
+
+enum ItrExtractionMethod {
+  PDF_TEXT
+  OCR
+}
+
+model ItrDocument {
+  id                String              @id @default(cuid())
+  userId            String
+  assessmentYear    String // e.g. "2025-26" — the AY the ITR was filed for
+  storagePath       String // path within the private "tax-documents" Supabase Storage bucket
+  mimeType          String
+  originalFilename  String
+  extractionStatus  ItrExtractionStatus @default(PENDING)
+  extractionMethod  ItrExtractionMethod?
+  /// 0-1 overall confidence (min of per-field confidences); per-field
+  /// confidence/needsReview flags live inside parsedData itself.
+  confidenceScore   Decimal?            @db.Decimal(4, 3)
+  /// Staging area for extracted fields (ParsedItrData shape, shared-types).
+  /// NEVER read by CapitalGainsService/DividendTaxService/TaxLotService —
+  /// grep confirms no write path from here into any other financial table.
+  parsedData        Json                @default("{}")
+  errorMessage      String?
+  reviewedAt        DateTime?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, assessmentYear])
+  @@map("itr_documents")
+}
+
+// ─── Phase 16: zero-knowledge encrypted document vault ───────────────────────
+// Architecturally distinct from asset-documents/tax-documents (Phase 1/15):
+// those upload PLAINTEXT over TLS — the server/Supabase Storage sees file
+// content (Supabase-managed at-rest encryption only). Here the browser
+// encrypts with AES-256-GCM (packages/shared-types/src/vault/crypto.ts)
+// BEFORE any byte leaves the client — this table and the vault-documents
+// bucket only ever hold/see ciphertext. mimeType/fileSizeBytes are stored
+// in the clear (low-sensitivity technical metadata, same as ItrDocument);
+// originalFilename is NOT stored in the clear (a filename like
+// "Aadhaar_1234.pdf" can itself leak sensitive info) — it's AES-GCM
+// encrypted with the same document key and decrypted client-side for
+// display, same as the file content.
+
+enum VaultDocumentCategory {
+  PAN
+  AADHAAR
+  PASSPORT
+  INSURANCE
+  PROPERTY_DOCUMENTS
+  INVESTMENT_STATEMENTS
+  TAX_RETURNS
+}
+
+model VaultDocument {
+  id       String                @id @default(cuid())
+  userId   String
+  category VaultDocumentCategory
+
+  /// Path within the private "vault-documents" Supabase Storage bucket.
+  /// Deliberately a random id, NOT a sanitized-original-filename path like
+  /// asset-documents/tax-documents use — the plaintext filename must not
+  /// appear anywhere server-visible, including the storage path itself.
+  storagePath String
+
+  /// AES-GCM ciphertext of the original filename (base64), decrypted
+  /// client-side only. encryptedFilenameIv is that ciphertext's own nonce
+  /// (distinct from `iv`, the file content's nonce — AES-GCM requires a
+  /// fresh IV per encryption, never reused across two ciphertexts).
+  encryptedFilename   String
+  encryptedFilenameIv String
+
+  mimeType      String
+  fileSizeBytes Int
+  /// AES-GCM nonce (base64) for the file CONTENT ciphertext stored in
+  /// vault-documents at `storagePath`. Not secret — safe alongside ciphertext.
+  iv String
+
+  linkedAssetId String?
+  createdAt     DateTime @default(now())
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  asset Asset? @relation(fields: [linkedAssetId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([userId, category])
+  @@map("vault_documents")
+}
+
+// ─── Phase 17: Alerts & Notifications ──────────────────────────────────────
+
+/// Price alert config for stocks — mirrors CryptoPriceAlert exactly (Phase 6's
+/// model/pattern). Persisted since Phase 4 conceptually should have had this;
+/// added now because Phase 17 is the first thing that actually evaluates it.
+model StockPriceAlert {
+  id          String              @id @default(cuid())
+  userId      String
+  ticker      String
+  exchange    String
+  targetPrice Decimal             @db.Decimal(20, 6)
+  direction   PriceAlertDirection
+  currency    String              @default("USD")
+  triggeredAt DateTime?
+  createdAt   DateTime            @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([ticker, exchange])
+  @@map("stock_price_alerts")
+}
+
+enum NotificationType {
+  MARKET_CRASH
+  DIVIDEND_RECEIVED
+  LOAN_DUE
+  SIP_DUE
+  STOCK_PRICE_ALERT
+  CRYPTO_PRICE_ALERT
+  PROPERTY_PRICE_CHANGE
+}
+
+enum NotificationChannel {
+  IN_APP
+  PUSH
+  EMAIL
+}
+
+/// One row per delivered (or attempted) alert event. Idempotency is the
+/// point of this model: `sourceEntityId` + `triggerBucket` together identify
+/// "this specific real-world event, from this evaluator run onward" so a
+/// BullMQ job that fires twice (retry, overlapping schedules, etc.) can
+/// never create two rows for the same thing — see the unique constraint.
+/// `triggerBucket` is "ONCE" for one-shot alerts (a price target either
+/// hasn't fired yet or has — CryptoPriceAlert.triggeredAt/StockPriceAlert.
+/// triggeredAt is the actual guard there, this is a defense-in-depth second
+/// guard) and a date string (yyyy-mm-dd) for alerts that can legitimately
+/// re-fire on a later day (market crash, an EMI still "approaching" tomorrow).
+model Notification {
+  id              String              @id @default(cuid())
+  userId          String
+  type            NotificationType
+  title           String
+  body            String
+  /// Structured context for the frontend (ticker, amount, delta%, etc.) —
+  /// never raw enough to need i18n by itself; title/body are pre-rendered.
+  data            Json                @default("{}")
+  sourceEntityId  String
+  triggerBucket   String
+  /// Per-channel attempt/outcome, e.g. {"IN_APP":"SENT","PUSH":"SKIPPED_BY_PREFERENCE","EMAIL":"SKIPPED_NO_CREDENTIALS"}.
+  /// This is the evidence the "disabling one channel only suppresses that
+  /// channel" acceptance criterion is tested against.
+  deliveryResult  Json                @default("{}")
+  read            Boolean             @default(false)
+  readAt          DateTime?
+  createdAt       DateTime            @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type, sourceEntityId, triggerBucket])
+  @@index([userId, read])
+  @@index([userId, createdAt])
+  @@map("notifications")
+}
+
+/// Per-(user, alertType) channel toggles. A missing row for a given type
+/// means "use the default" (in-app on, push/email off) — see
+/// NotificationPreferenceService.DEFAULTS.
+model NotificationPreference {
+  id           String           @id @default(cuid())
+  userId       String
+  alertType    NotificationType
+  inAppEnabled Boolean          @default(true)
+  pushEnabled  Boolean          @default(false)
+  emailEnabled Boolean          @default(false)
+  updatedAt    DateTime         @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, alertType])
+  @@map("notification_preferences")
+}
+
+/// One FCM registration token per browser/device a user has granted push
+/// permission on. A user can have several (multiple browsers); tokens are
+/// opaque and rotate on Firebase's own schedule, so this is a pure cache —
+/// safe to delete and have the client re-register.
+model PushToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("push_tokens")
 }
