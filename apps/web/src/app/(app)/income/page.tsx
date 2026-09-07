@@ -81,7 +81,7 @@ export default function IncomePage() {
           onClick={() => setModalOpen(true)}
           style={{
             padding: "0.75rem 1.5rem",
-            background: "linear-gradient(135deg, #00D97E, #3D83FF)",
+            background: "var(--color-gain)",
             border: "none", borderRadius: "var(--radius-md)",
             color: "#fff", fontWeight: 700, fontSize: "0.9375rem",
             cursor: "pointer", fontFamily: "var(--font-sans)",
@@ -117,7 +117,7 @@ export default function IncomePage() {
             Add your salary, rental income, or side hustle to see your monthly passive income figure.
           </p>
           <button onClick={() => setModalOpen(true)} style={{
-            padding: "0.75rem 2rem", background: "linear-gradient(135deg, #00D97E, #3D83FF)",
+            padding: "0.75rem 2rem", background: "var(--color-gain)",
             border: "none", borderRadius: "var(--radius-md)", color: "#fff",
             fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-sans)",
           }}>

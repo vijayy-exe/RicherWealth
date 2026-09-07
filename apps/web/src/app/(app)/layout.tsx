@@ -4,66 +4,97 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
+import {
+  LayoutDashboard,
+  Layers,
+  Gem,
+  ClipboardList,
+  TrendingUp,
+  Landmark,
+  Building2,
+  Bitcoin,
+  Coins,
+  Boxes,
+  Home,
+  Wallet,
+  Receipt,
+  LineChart,
+  ShieldCheck,
+  Globe2,
+  FileText,
+  Target,
+  Calculator,
+  Lock,
+  Settings as SettingsIcon,
+  ChevronDown,
+  Sparkles,
+  type LucideIcon,
+} from "lucide-react";
+import { NotificationBell } from "@/components/notifications/NotificationBell";
 
 interface NavItem {
   href: string;
   label: string;
-  icon: string;
+  icon: LucideIcon;
 }
 
 interface NavEntry {
   label: string;
-  icon?: string;
+  icon: LucideIcon;
   href?: string; // single link
   items?: NavItem[]; // grouped dropdown
 }
 
 // Grouped so the top bar always fits — a flat list of 18+ phases doesn't.
+// Lucide icons, not emoji: consistent stroke weight/size reads as a real
+// product nav rather than a row of decorative stickers.
 const NAV: NavEntry[] = [
-  { label: "Dashboard", href: "/dashboard", icon: "📊" },
+  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   {
     label: "Holdings",
-    icon: "💎",
+    icon: Layers,
     items: [
-      { href: "/assets", label: "Assets", icon: "💎" },
-      { href: "/liabilities", label: "Liabilities", icon: "📋" },
-      { href: "/stocks", label: "Stocks", icon: "📈" },
-      { href: "/mutual-funds", label: "Mutual Funds", icon: "🏦" },
-      { href: "/bonds", label: "Bonds", icon: "🏛️" },
-      { href: "/crypto", label: "Crypto", icon: "₿" },
-      { href: "/precious-metals", label: "Precious Metals", icon: "🥇" },
-      { href: "/commodities", label: "Commodities", icon: "🛢️" },
-      { href: "/real-estate", label: "Real Estate", icon: "🏠" },
+      { href: "/assets", label: "Assets", icon: Gem },
+      { href: "/liabilities", label: "Liabilities", icon: ClipboardList },
+      { href: "/stocks", label: "Stocks", icon: TrendingUp },
+      { href: "/mutual-funds", label: "Mutual Funds", icon: Landmark },
+      { href: "/bonds", label: "Bonds", icon: Building2 },
+      { href: "/crypto", label: "Crypto", icon: Bitcoin },
+      { href: "/precious-metals", label: "Precious Metals", icon: Coins },
+      { href: "/commodities", label: "Commodities", icon: Boxes },
+      { href: "/real-estate", label: "Real Estate", icon: Home },
     ],
   },
   {
     label: "Cash Flow",
-    icon: "💵",
+    icon: Wallet,
     items: [
-      { href: "/income", label: "Income", icon: "💵" },
-      { href: "/transactions", label: "Transactions", icon: "🧾" },
+      { href: "/income", label: "Income", icon: Wallet },
+      { href: "/transactions", label: "Transactions", icon: Receipt },
     ],
   },
   {
     label: "Insights",
-    icon: "📐",
+    icon: LineChart,
     items: [
-      { href: "/analytics", label: "Analytics", icon: "📐" },
-      { href: "/risk", label: "Risk", icon: "🛡️" },
-      { href: "/markets", label: "Markets", icon: "🌐" },
+      { href: "/analytics", label: "Analytics", icon: LineChart },
+      { href: "/risk", label: "Risk", icon: ShieldCheck },
+      { href: "/markets", label: "Markets", icon: Globe2 },
+      { href: "/reports", label: "Reports", icon: FileText },
+      { href: "/ai-chat", label: "AI Chat", icon: Sparkles },
     ],
   },
   {
     label: "Planning",
-    icon: "🎯",
+    icon: Target,
     items: [
-      { href: "/goals", label: "Goals", icon: "🎯" },
-      { href: "/calculators", label: "Calculators", icon: "🧮" },
-      { href: "/tax", label: "Tax Center", icon: "🧾" },
-      { href: "/vault", label: "Vault", icon: "🔐" },
+      { href: "/goals", label: "Goals", icon: Target },
+      { href: "/calculators", label: "Calculators", icon: Calculator },
+      { href: "/tax", label: "Tax Center", icon: Landmark },
+      { href: "/vault", label: "Vault", icon: Lock },
     ],
   },
-  { label: "Settings", href: "/settings", icon: "⚙️" },
+  { label: "Settings", href: "/settings", icon: SettingsIcon },
 ];
 
 function isItemActive(pathname: string, href: string): boolean {
@@ -74,26 +105,26 @@ function pillStyle(active: boolean): React.CSSProperties {
   return {
     display: "flex",
     alignItems: "center",
-    gap: 6,
-    padding: "6px 12px",
-    borderRadius: "var(--radius-full)",
-    fontSize: "0.875rem",
+    gap: 7,
+    padding: "7px 13px",
+    borderRadius: "var(--radius-md)",
+    fontSize: "0.8125rem",
     fontWeight: active ? 600 : 500,
     color: active ? "var(--color-text-primary)" : "var(--color-text-secondary)",
     background: active ? "var(--color-accent-muted)" : "transparent",
-    border: `1px solid ${active ? "var(--color-accent-glow)" : "transparent"}`,
+    border: "1px solid transparent",
     textDecoration: "none",
     whiteSpace: "nowrap",
     cursor: "pointer",
-    transition: "all 0.15s ease",
+    transition: "background 0.15s ease, color 0.15s ease",
   };
 }
 
-function SingleNavLink({ href, label, icon }: NavItem) {
+function SingleNavLink({ href, label, icon: Icon }: NavItem) {
   const pathname = usePathname();
   return (
     <Link href={href} style={pillStyle(isItemActive(pathname, href))}>
-      <span style={{ fontSize: "0.9rem" }}>{icon}</span>
+      <Icon size={16} strokeWidth={2} />
       {label}
     </Link>
   );
@@ -105,6 +136,7 @@ function NavGroup({ entry }: { entry: NavEntry }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const items = entry.items ?? [];
   const groupActive = items.some((item) => isItemActive(pathname, item.href));
+  const GroupIcon = entry.icon;
 
   useEffect(() => {
     setOpen(false);
@@ -137,19 +169,18 @@ function NavGroup({ entry }: { entry: NavEntry }) {
         aria-expanded={open}
         aria-haspopup="menu"
       >
-        <span style={{ fontSize: "0.9rem" }}>{entry.icon}</span>
+        <GroupIcon size={16} strokeWidth={2} />
         {entry.label}
-        <span
+        <ChevronDown
+          size={13}
+          strokeWidth={2.25}
           style={{
-            fontSize: "0.6rem",
-            marginLeft: 2,
+            marginLeft: -1,
             transform: open ? "rotate(180deg)" : "none",
             transition: "transform 0.15s ease",
             color: "var(--color-text-muted)",
           }}
-        >
-          ▼
-        </span>
+        />
       </button>
 
       <AnimatePresence>
@@ -164,7 +195,7 @@ function NavGroup({ entry }: { entry: NavEntry }) {
               position: "absolute",
               top: "calc(100% + 8px)",
               left: 0,
-              minWidth: 200,
+              minWidth: 208,
               padding: 6,
               borderRadius: "var(--radius-lg)",
               border: "1px solid var(--color-border-glass)",
@@ -172,12 +203,13 @@ function NavGroup({ entry }: { entry: NavEntry }) {
               boxShadow: "var(--shadow-lg)",
               display: "flex",
               flexDirection: "column",
-              gap: 2,
+              gap: 1,
               zIndex: 60,
             }}
           >
             {items.map((item) => {
               const active = isItemActive(pathname, item.href);
+              const ItemIcon = item.icon;
               return (
                 <Link
                   key={item.href}
@@ -186,10 +218,10 @@ function NavGroup({ entry }: { entry: NavEntry }) {
                   style={{
                     display: "flex",
                     alignItems: "center",
-                    gap: 8,
-                    padding: "8px 10px",
+                    gap: 10,
+                    padding: "9px 10px",
                     borderRadius: "var(--radius-md)",
-                    fontSize: "0.875rem",
+                    fontSize: "0.8125rem",
                     fontWeight: active ? 600 : 500,
                     color: active ? "var(--color-text-primary)" : "var(--color-text-secondary)",
                     background: active ? "var(--color-accent-muted)" : "transparent",
@@ -197,7 +229,7 @@ function NavGroup({ entry }: { entry: NavEntry }) {
                     whiteSpace: "nowrap",
                   }}
                 >
-                  <span style={{ fontSize: "0.9rem" }}>{item.icon}</span>
+                  <ItemIcon size={15} strokeWidth={2} style={{ color: active ? "var(--color-accent)" : "var(--color-text-muted)", flexShrink: 0 }} />
                   {item.label}
                 </Link>
               );
@@ -225,35 +257,50 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           display: "flex",
           alignItems: "center",
           padding: "0 24px",
-          gap: 24,
+          gap: 28,
         }}
       >
-        {/* Logo */}
-        <span
-          style={{
-            fontWeight: 800,
-            fontSize: "1.125rem",
-            letterSpacing: "-0.03em",
-            background: "linear-gradient(135deg, #3D83FF, #00D97E)",
-            WebkitBackgroundClip: "text",
-            WebkitTextFillColor: "transparent",
-            backgroundClip: "text",
-            whiteSpace: "nowrap",
-          }}
-        >
-          RicherWealth
-        </span>
+        {/* Logo — a solid mark + wordmark, not a gradient-clip effect */}
+        <Link href="/dashboard" style={{ display: "flex", alignItems: "center", gap: 9, textDecoration: "none", flexShrink: 0 }}>
+          <div
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 8,
+              background: "var(--color-accent)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            <TrendingUp size={16} strokeWidth={2.5} color="#fff" />
+          </div>
+          <span
+            style={{
+              fontWeight: 700,
+              fontSize: "1.0625rem",
+              letterSpacing: "-0.02em",
+              color: "var(--color-text-primary)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            RicherWealth
+          </span>
+        </Link>
 
         {/* Nav — grouped so it never overflows the viewport */}
-        <nav style={{ display: "flex", alignItems: "center", gap: 4, flex: 1, minWidth: 0, flexWrap: "wrap" }}>
+        <nav style={{ display: "flex", alignItems: "center", gap: 2, flex: 1, minWidth: 0, flexWrap: "wrap" }}>
           {NAV.map((entry) =>
             entry.href ? (
-              <SingleNavLink key={entry.href} href={entry.href} label={entry.label} icon={entry.icon ?? ""} />
+              <SingleNavLink key={entry.href} href={entry.href} label={entry.label} icon={entry.icon} />
             ) : (
               <NavGroup key={entry.label} entry={entry} />
             ),
           )}
         </nav>
+
+        <NotificationBell />
       </header>
 
       <main style={{ flex: 1, padding: "32px 24px", maxWidth: 1280, margin: "0 auto", width: "100%" }}>

@@ -82,7 +82,7 @@ export function ExpenseForm({ onSuccess, isLoading }: ExpenseFormProps) {
       <div style={{ display: "flex", justifyContent: "flex-end", paddingTop: 8 }}>
         <button type="submit" disabled={isLoading} style={{
           padding: "0.75rem 2rem",
-          background: isLoading ? "var(--color-text-muted)" : "linear-gradient(135deg, #FF4D6D, #E67E22)",
+          background: isLoading ? "var(--color-text-muted)" : "var(--color-loss)",
           border: "none", borderRadius: "var(--radius-md)", color: "#fff",
           fontSize: "0.9375rem", fontWeight: 600, cursor: isLoading ? "not-allowed" : "pointer", fontFamily: "var(--font-sans)",
         }}>

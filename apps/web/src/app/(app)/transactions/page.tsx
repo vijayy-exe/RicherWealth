@@ -12,6 +12,7 @@ import { ExpenseForm, type ExpenseFormValues } from "@/components/forms/ExpenseF
 import { CashFlowChart } from "@/components/dashboard/CashFlowChart";
 import { BankSyncPanel } from "@/components/transactions/BankSyncPanel";
 import { SubscriptionsPanel } from "@/components/transactions/SubscriptionsPanel";
+import { ExportButton } from "@/components/ExportButton";
 import {
   useTransactions, useCashFlow, useCreateTransaction, useRecategorizeTransaction, useDeleteTransaction,
   type TransactionRow, type ExpenseCategory,
@@ -151,16 +152,19 @@ export default function TransactionsPage() {
             Expenses, cash flow, subscriptions, and bank sync
           </p>
         </div>
-        <button
-          onClick={() => setModalOpen(true)}
-          style={{
-            padding: "0.75rem 1.5rem", background: "linear-gradient(135deg, #FF4D6D, #E67E22)",
-            border: "none", borderRadius: "var(--radius-md)", color: "#fff", fontWeight: 700, fontSize: "0.9375rem",
-            cursor: "pointer", fontFamily: "var(--font-sans)",
-          }}
-        >
-          + Add Expense
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <ExportButton dataset="transactions" />
+          <button
+            onClick={() => setModalOpen(true)}
+            style={{
+              padding: "0.75rem 1.5rem", background: "var(--color-loss)",
+              border: "none", borderRadius: "var(--radius-md)", color: "#fff", fontWeight: 700, fontSize: "0.9375rem",
+              cursor: "pointer", fontFamily: "var(--font-sans)",
+            }}
+          >
+            + Add Expense
+          </button>
+        </div>
       </div>
 
       <BankSyncPanel />

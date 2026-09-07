@@ -4,7 +4,27 @@ import { NetWorthService } from "../net-worth/net-worth.service";
 import { PriceSyncService } from "./price-sync.service";
 import { AnalyticsService, type HoldingAnalytics } from "./analytics.service";
 import { EventEmitter2 } from "@nestjs/event-emitter";
+import type { PriceAlertDirection } from "@prisma/client";
 import Decimal from "decimal.js";
+
+export interface CreateStockPriceAlertDto {
+  ticker: string;
+  exchange: string;
+  targetPrice: number;
+  direction: "ABOVE" | "BELOW";
+  currency?: string;
+}
+
+export interface StockPriceAlertRow {
+  id: string;
+  ticker: string;
+  exchange: string;
+  targetPrice: number;
+  direction: "ABOVE" | "BELOW";
+  currency: string;
+  triggeredAt: string | null;
+  createdAt: string;
+}
 
 export interface CreateHoldingDto {
   ticker: string;
@@ -251,6 +271,56 @@ export class StocksService {
       lastSyncAt: holding.lastSyncAt?.toISOString() ?? null,
       analytics,
       priceError,
+    };
+  }
+
+  // ─── Price Alerts (persisted only — delivery is Phase 17) ─────────────────
+  // Mirrors CryptoService's createAlert/listAlerts/deleteAlert exactly —
+  // stocks never had this CRUD before (crypto's was persisted in Phase 6;
+  // no equivalent existed for stocks until Phase 17 needed something to
+  // evaluate).
+
+  async createPriceAlert(userId: string, dto: CreateStockPriceAlertDto): Promise<StockPriceAlertRow> {
+    const alert = await this.prisma.stockPriceAlert.create({
+      data: {
+        userId,
+        ticker: dto.ticker.toUpperCase(),
+        exchange: dto.exchange.toUpperCase(),
+        targetPrice: dto.targetPrice.toString(),
+        direction: dto.direction as PriceAlertDirection,
+        currency: dto.currency ?? "USD",
+      },
+    });
+    return this.toAlertRow(alert);
+  }
+
+  async listPriceAlerts(userId: string): Promise<StockPriceAlertRow[]> {
+    const alerts = await this.prisma.stockPriceAlert.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+    });
+    return alerts.map((a) => this.toAlertRow(a));
+  }
+
+  async deletePriceAlert(userId: string, alertId: string): Promise<void> {
+    const alert = await this.prisma.stockPriceAlert.findFirst({ where: { id: alertId, userId } });
+    if (!alert) throw new NotFoundException("Price alert not found");
+    await this.prisma.stockPriceAlert.delete({ where: { id: alertId } });
+  }
+
+  private toAlertRow(a: {
+    id: string; ticker: string; exchange: string; targetPrice: unknown; direction: string;
+    currency: string; triggeredAt: Date | null; createdAt: Date;
+  }): StockPriceAlertRow {
+    return {
+      id: a.id,
+      ticker: a.ticker,
+      exchange: a.exchange,
+      targetPrice: parseFloat(String(a.targetPrice)),
+      direction: a.direction as "ABOVE" | "BELOW",
+      currency: a.currency,
+      triggeredAt: a.triggeredAt?.toISOString() ?? null,
+      createdAt: a.createdAt.toISOString(),
     };
   }
 }

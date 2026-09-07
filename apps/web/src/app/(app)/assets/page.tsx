@@ -13,6 +13,8 @@ import { AssetForm } from "@/components/forms/AssetForm";
 import { useAssets, useAssetsSummary, useCreateAsset, useDeleteAsset, type AssetRow, type AssetsPortfolioSummary } from "@/hooks/useAssets";
 import { useRevaluations, useAddRevaluation } from "@/hooks/useRealEstate";
 import type { AssetType } from "@richer/shared-types";
+import { ExportButton } from "@/components/ExportButton";
+import { Gem } from "lucide-react";
 
 const REVALUABLE_TYPES = new Set(["COLLECTIBLE", "NFT"]);
 
@@ -37,10 +39,14 @@ const columnDefs: ColDef<AssetRow>[] = [
     flex: 2,
     minWidth: 180,
     cellRenderer: (params: { data: AssetRow }) => {
-      const meta = ASSET_TYPE_META[params.data.type] ?? { icon: "💎", color: "#5C6880" };
+      const meta = ASSET_TYPE_META[params.data.type];
+      const Icon = meta?.icon ?? Gem;
+      const color = meta?.color ?? "#5C6880";
       return (
         <div style={{ display: "flex", alignItems: "center", gap: 10, height: "100%" }}>
-          <span style={{ fontSize: "1.1rem" }}>{meta.icon}</span>
+          <div style={{ width: 24, height: 24, borderRadius: 6, background: color + "1A", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <Icon size={13} strokeWidth={2} color={color} />
+          </div>
           <span style={{ fontWeight: 600, color: "var(--color-text-primary)" }}>{params.data.name}</span>
         </div>
       );
@@ -221,7 +227,7 @@ function EmptyAssets({ onAdd }: { onAdd: () => void }) {
         onClick={onAdd}
         style={{
           padding: "0.75rem 2rem",
-          background: "linear-gradient(135deg, var(--color-accent), #00D97E)",
+          background: "var(--color-accent)",
           border: "none", borderRadius: "var(--radius-md)",
           color: "#fff", fontWeight: 700, fontSize: "0.9375rem",
           cursor: "pointer", fontFamily: "var(--font-sans)",
@@ -321,19 +327,22 @@ export default function AssetsPage() {
             Track everything you own across all asset classes
           </p>
         </div>
-        <button
-          onClick={() => setModalState("type-select")}
-          style={{
-            padding: "0.75rem 1.5rem",
-            background: "linear-gradient(135deg, var(--color-accent), #00D97E)",
-            border: "none", borderRadius: "var(--radius-md)",
-            color: "#fff", fontWeight: 700, fontSize: "0.9375rem",
-            cursor: "pointer", fontFamily: "var(--font-sans)",
-            display: "flex", alignItems: "center", gap: 8,
-          }}
-        >
-          + Add Asset
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <ExportButton dataset="assets" />
+          <button
+            onClick={() => setModalState("type-select")}
+            style={{
+              padding: "0.75rem 1.5rem",
+              background: "var(--color-accent)",
+              border: "none", borderRadius: "var(--radius-md)",
+              color: "#fff", fontWeight: 700, fontSize: "0.9375rem",
+              cursor: "pointer", fontFamily: "var(--font-sans)",
+              display: "flex", alignItems: "center", gap: 8,
+            }}
+          >
+            + Add Asset
+          </button>
+        </div>
       </div>
 
       {/* Total bar */}

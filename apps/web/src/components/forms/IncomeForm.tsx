@@ -161,7 +161,7 @@ export function IncomeForm({ onSuccess, isLoading }: IncomeFormProps) {
           disabled={isLoading}
           style={{
             padding: "0.75rem 2rem",
-            background: isLoading ? "var(--color-text-muted)" : "linear-gradient(135deg, #00D97E, #3D83FF)",
+            background: isLoading ? "var(--color-text-muted)" : "var(--color-gain)",
             border: "none",
             borderRadius: "var(--radius-md)",
             color: "#fff",

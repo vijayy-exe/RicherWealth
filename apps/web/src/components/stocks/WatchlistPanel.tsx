@@ -148,7 +148,7 @@ export function WatchlistPanel({ priceTicks }: WatchlistPanelProps) {
             onClick={() => { void createWatchlist.mutateAsync("My Watchlist"); }}
             style={{
               padding: "0.625rem 1.5rem",
-              background: "linear-gradient(135deg, var(--color-accent), #00D97E)",
+              background: "var(--color-accent)",
               border: "none", borderRadius: "var(--radius-md)",
               color: "#fff", fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-sans)",
             }}

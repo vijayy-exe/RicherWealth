@@ -8,12 +8,13 @@ import { usePasskeys, useRegisterPasskey, useDeletePasskey } from "@/hooks/usePa
 import { Button, Card, Badge, Input } from "@richer/ui";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
+import { NotificationPreferencesPanel } from "@/components/notifications/NotificationPreferencesPanel";
 
 export default function SettingsPage() {
   const { data: user, refetch } = useUser();
   const router = useRouter();
   const supabase = createClient();
-  const [activeTab, setActiveTab] = useState<"profile" | "security" | "preferences">("profile");
+  const [activeTab, setActiveTab] = useState<"profile" | "security" | "preferences" | "notifications">("profile");
 
   const { data: passkeys } = usePasskeys();
   const registerPasskey = useRegisterPasskey();
@@ -52,6 +53,7 @@ export default function SettingsPage() {
             { id: "profile", label: "Profile" },
             { id: "security", label: "Security & MFA" },
             { id: "preferences", label: "Preferences" },
+            { id: "notifications", label: "Notifications" },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -172,6 +174,13 @@ export default function SettingsPage() {
               <div className="flex flex-col gap-4 max-w-md">
                 <Input label="Base Currency" value={user.baseCurrency} disabled hint="Determines how your overall net worth is displayed." />
               </div>
+            </Card>
+          )}
+
+          {activeTab === "notifications" && (
+            <Card className="flex flex-col gap-6">
+              <h2 className="text-lg font-semibold border-b border-[var(--color-border-subtle)] pb-4">Notification Preferences</h2>
+              <NotificationPreferencesPanel />
             </Card>
           )}
         </div>

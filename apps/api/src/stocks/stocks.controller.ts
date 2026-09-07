@@ -12,7 +12,7 @@ import {
   HttpStatus,
 } from "@nestjs/common";
 import { SupabaseAuthGuard } from "../auth/guards/supabase-auth.guard";
-import { StocksService, type CreateHoldingDto } from "./stocks.service";
+import { StocksService, type CreateHoldingDto, type CreateStockPriceAlertDto } from "./stocks.service";
 import { PriceSyncService } from "./price-sync.service";
 
 interface AuthRequest {
@@ -98,5 +98,23 @@ export class StocksController {
   @HttpCode(HttpStatus.NO_CONTENT)
   removeFromWatchlist(@Param("itemId") itemId: string) {
     return this.stocks.removeFromWatchlist(itemId);
+  }
+
+  // ─── Price Alerts (persisted only — delivery is Phase 17) ─────────────────
+
+  @Get("alerts")
+  listAlerts(@Request() req: AuthRequest) {
+    return this.stocks.listPriceAlerts(req.user.id);
+  }
+
+  @Post("alerts")
+  createAlert(@Request() req: AuthRequest, @Body() dto: CreateStockPriceAlertDto) {
+    return this.stocks.createPriceAlert(req.user.id, dto);
+  }
+
+  @Delete("alerts/:id")
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deleteAlert(@Request() req: AuthRequest, @Param("id") alertId: string) {
+    return this.stocks.deletePriceAlert(req.user.id, alertId);
   }
 }

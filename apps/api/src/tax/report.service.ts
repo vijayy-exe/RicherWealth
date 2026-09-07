@@ -100,7 +100,7 @@ export class ReportService {
       doc.fontSize(9).fillColor("#888").text(`Generated ${report.generatedAt}`);
       doc.moveDown(1);
 
-      const money = (n: number) => `${report.currency} ${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      const money = (n: number) => `${report.currency} ${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
       doc.fontSize(13).fillColor("#000").text("Capital Gains — Short-Term");
       doc.fontSize(10);

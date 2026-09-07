@@ -31,7 +31,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
               width: 52,
               height: 52,
               borderRadius: 16,
-              background: "linear-gradient(135deg, #3D83FF, #00D97E)",
+              background: "var(--color-accent)",
               fontSize: "1.5rem",
               boxShadow: "0 0 32px rgba(61,131,255,0.3)",
               marginBottom: "0.75rem",

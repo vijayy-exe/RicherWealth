@@ -34,6 +34,6 @@ import { ItrDiscrepancyService } from "./itr/itr-discrepancy.service";
     TaxLotService, CapitalGainsService, DividendTaxService, HarvestingService, ReportService,
     ItrService, ItrExtractionService, ItrDiscrepancyService,
   ],
-  exports: [TaxLotService, CapitalGainsService, DividendTaxService],
+  exports: [TaxLotService, CapitalGainsService, DividendTaxService, ReportService, HarvestingService],
 })
 export class TaxModule {}

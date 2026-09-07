@@ -11,6 +11,7 @@ import "ag-grid-community/styles/ag-theme-quartz.css";
 import { Modal } from "@/components/ui/Modal";
 import { LiabilityForm } from "@/components/forms/LiabilityForm";
 import { useLiabilities, useLiabilitiesSummary, useCreateLiability, useDeleteLiability, type LiabilityRow, type LiabilitiesPortfolioSummary } from "@/hooks/useLiabilities";
+import { ExportButton } from "@/components/ExportButton";
 
 const LIABILITY_META: Record<string, { label: string; icon: string; color: string }> = {
   MORTGAGE: { label: "Mortgage", icon: "🏠", color: "#9B59B6" },
@@ -225,18 +226,21 @@ export default function LiabilitiesPage() {
             Loans, credit cards, and outstanding debt
           </p>
         </div>
-        <button
-          onClick={() => setModalOpen(true)}
-          style={{
-            padding: "0.75rem 1.5rem",
-            background: "linear-gradient(135deg, #FF4D6D, #E67E22)",
-            border: "none", borderRadius: "var(--radius-md)",
-            color: "#fff", fontWeight: 700, fontSize: "0.9375rem",
-            cursor: "pointer", fontFamily: "var(--font-sans)",
-          }}
-        >
-          + Add Liability
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <ExportButton dataset="liabilities" />
+          <button
+            onClick={() => setModalOpen(true)}
+            style={{
+              padding: "0.75rem 1.5rem",
+              background: "var(--color-loss)",
+              border: "none", borderRadius: "var(--radius-md)",
+              color: "#fff", fontWeight: 700, fontSize: "0.9375rem",
+              cursor: "pointer", fontFamily: "var(--font-sans)",
+            }}
+          >
+            + Add Liability
+          </button>
+        </div>
       </div>
 
       {/* Summary cards */}
@@ -257,7 +261,7 @@ export default function LiabilitiesPage() {
           </h3>
           <p style={{ color: "var(--color-text-muted)", marginBottom: 24 }}>No liabilities recorded yet. Add any outstanding loans or credit cards.</p>
           <button onClick={() => setModalOpen(true)} style={{
-            padding: "0.75rem 2rem", background: "linear-gradient(135deg, #FF4D6D, #E67E22)",
+            padding: "0.75rem 2rem", background: "var(--color-loss)",
             border: "none", borderRadius: "var(--radius-md)", color: "#fff",
             fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-sans)",
           }}>

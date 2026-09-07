@@ -507,7 +507,7 @@ export function AddHoldingDrawer({ open, onClose, onSave, isLoading }: AddHoldin
                   padding: "0.875rem",
                   background: isLoading
                     ? "var(--color-bg-input)"
-                    : "linear-gradient(135deg, var(--color-accent), #00D97E)",
+                    : "var(--color-accent)",
                   border: isLoading ? "1px solid var(--color-border-glass)" : "none",
                   borderRadius: "var(--radius-md)",
                   color: isLoading ? "var(--color-text-muted)" : "#fff",

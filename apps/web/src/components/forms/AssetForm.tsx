@@ -9,6 +9,7 @@ import { FormField } from "./FormField";
 import { CurrencyInput } from "./CurrencyInput";
 import { TextInput, SelectField, DateInput, TextArea } from "./Inputs";
 import { ASSET_TYPE_META } from "./AssetTypeSelector";
+import { Gem } from "lucide-react";
 import { FileUploadZone } from "./FileUploadZone";
 import type { UploadedDocument } from "@/hooks/useFileUpload";
 import type { AssetType } from "@richer/shared-types";
@@ -533,7 +534,7 @@ interface AssetFormProps {
 
 export function AssetForm({ type, defaultValues, onSuccess, onBack, isLoading }: AssetFormProps) {
   const [step, setStep] = useState(0);
-  const meta = ASSET_TYPE_META[type] ?? { label: type, icon: "💎", color: "#3D83FF" };
+  const meta = ASSET_TYPE_META[type] ?? { label: type, icon: Gem, color: "#3D83FF" };
 
   const { control, register, handleSubmit, formState: { errors } } = useForm<Record<string, unknown>>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -582,9 +583,9 @@ export function AssetForm({ type, defaultValues, onSuccess, onBack, isLoading }:
         <div style={{
           width: 40, height: 40, borderRadius: "var(--radius-md)",
           background: meta.color + "20", border: `1px solid ${meta.color}40`,
-          display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.25rem",
+          display: "flex", alignItems: "center", justifyContent: "center",
         }}>
-          {meta.icon}
+          <meta.icon size={19} strokeWidth={2} color={meta.color} />
         </div>
         <div>
           <h3 style={{ fontWeight: 700, color: "var(--color-text-primary)", fontSize: "1rem" }}>
@@ -739,7 +740,7 @@ export function AssetForm({ type, defaultValues, onSuccess, onBack, isLoading }:
             disabled={isLoading}
             style={{
               padding: "0.625rem 1.5rem",
-              background: isLoading ? "var(--color-text-muted)" : "linear-gradient(135deg, var(--color-accent), #00D97E)",
+              background: isLoading ? "var(--color-text-muted)" : "var(--color-accent)",
               border: "none",
               borderRadius: "var(--radius-md)",
               color: "#fff",

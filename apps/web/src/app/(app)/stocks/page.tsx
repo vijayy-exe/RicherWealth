@@ -13,6 +13,7 @@ import { AddHoldingDrawer } from "@/components/stocks/AddHoldingDrawer";
 import { WatchlistPanel } from "@/components/stocks/WatchlistPanel";
 import { FairValueBadge } from "@/components/stocks/FairValueBadge";
 import { StalePriceBadge } from "@/components/stocks/StalePriceBadge";
+import { ExportButton } from "@/components/ExportButton";
 
 // ─── Live Price Cell (flashes on WebSocket tick) ──────────────────────────────
 
@@ -313,18 +314,21 @@ export default function StocksPage() {
           </p>
         </div>
         {activeTab === "holdings" && (
-          <button
-            onClick={() => setDrawerOpen(true)}
-            style={{
-              padding: "0.75rem 1.5rem",
-              background: "linear-gradient(135deg, var(--color-accent), #00D97E)",
-              border: "none", borderRadius: "var(--radius-md)",
-              color: "#fff", fontWeight: 700, fontSize: "0.9375rem",
-              cursor: "pointer", fontFamily: "var(--font-sans)",
-            }}
-          >
-            + Add Holding
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <ExportButton dataset="stocks" />
+            <button
+              onClick={() => setDrawerOpen(true)}
+              style={{
+                padding: "0.75rem 1.5rem",
+                background: "var(--color-accent)",
+                border: "none", borderRadius: "var(--radius-md)",
+                color: "#fff", fontWeight: 700, fontSize: "0.9375rem",
+                cursor: "pointer", fontFamily: "var(--font-sans)",
+              }}
+            >
+              + Add Holding
+            </button>
+          </div>
         )}
       </div>
 
@@ -383,7 +387,7 @@ export default function StocksPage() {
                   onClick={() => setDrawerOpen(true)}
                   style={{
                     padding: "0.75rem 2rem",
-                    background: "linear-gradient(135deg, var(--color-accent), #00D97E)",
+                    background: "var(--color-accent)",
                     border: "none", borderRadius: "var(--radius-md)",
                     color: "#fff", fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-sans)",
                   }}

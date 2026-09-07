@@ -45,6 +45,15 @@ import { NewsModule } from "./news/news.module";
 // Phase 15
 import { TaxModule } from "./tax/tax.module";
 import { VaultModule } from "./vault/vault.module";
+// Phase 17
+import { BullModule } from "@nestjs/bullmq";
+import { ConfigService } from "@nestjs/config";
+import IORedis from "ioredis";
+import { NotificationsModule } from "./notifications/notifications.module";
+// Phase 18
+import { ReportsModule } from "./reports/reports.module";
+// Phase 19
+import { AiModule } from "./ai/ai.module";
 
 @Module({
   imports: [
@@ -58,6 +67,19 @@ import { VaultModule } from "./vault/vault.module";
 
     // Cron job infrastructure
     ScheduleModule.forRoot(),
+
+    // Phase 17: BullMQ, against the same native Redis every cache in this
+    // app already uses. Unlike the cache services' Redis-optional fallback
+    // pattern, a queue genuinely needs Redis to exist — no in-memory
+    // fallback makes sense for a durable job queue.
+    BullModule.forRootAsync({
+      useFactory: (config: ConfigService) => ({
+        connection: new IORedis(config.get<string>("REDIS_URL") ?? "redis://localhost:6379", {
+          maxRetriesPerRequest: null, // required by BullMQ's blocking commands
+        }),
+      }),
+      inject: [ConfigService],
+    }),
 
     // GraphQL — code-first, schema auto-generated
     GraphQLModule.forRoot<ApolloDriverConfig>({
@@ -108,11 +130,16 @@ import { VaultModule } from "./vault/vault.module";
     // Phase 15
     TaxModule,
     VaultModule,
+    // Phase 17
+    NotificationsModule,
+    // Phase 18
+    ReportsModule,
+    // Phase 19
+    AiModule,
 
     // Phase 3+
     // AssetsModule,
     // LiabilitiesModule,
-    // AiModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -1,7 +1,8 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { RefreshCw, Wifi, WifiOff } from "lucide-react";
+import { RefreshCw, Wifi, WifiOff, ShieldCheck, Scale, Wallet } from "lucide-react";
+import { IconBadge } from "@/components/ui/IconBadge";
 
 import { useDashboard } from "@/hooks/useDashboard";
 import { useNetWorthSocket } from "@/hooks/useNetWorthSocket";
@@ -11,6 +12,7 @@ import { CurrencyExposureWidget } from "@/components/dashboard/CurrencyExposureW
 import { DebtVsInvestmentWidget } from "@/components/dashboard/DebtVsInvestmentWidget";
 import { TrendChart } from "@/components/dashboard/TrendChart";
 import { EmptyState } from "@/components/dashboard/EmptyState";
+import { SuggestionsPanel } from "@/components/dashboard/SuggestionsPanel";
 import { Spinner } from "@richer/ui";
 
 // Skeleton loader for cards
@@ -173,14 +175,14 @@ export default function DashboardPage() {
               className="glass-card"
               style={{ padding: "1.25rem 1.5rem", display: "flex", alignItems: "center", gap: "1rem" }}
             >
-              <div style={{ fontSize: "2rem" }}>🛡️</div>
+              <IconBadge icon={ShieldCheck} tone={data.emergencyFundHealth >= 6 ? "gain" : data.emergencyFundHealth >= 3 ? "warning" : "loss"} />
               <div>
                 <p style={{ fontSize: "0.6875rem", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--color-text-muted)", marginBottom: 4 }}>Emergency Fund</p>
                 <p style={{ fontSize: "1.25rem", fontWeight: 700, color: data.emergencyFundHealth >= 6 ? "var(--color-gain)" : data.emergencyFundHealth >= 3 ? "#FFB547" : "var(--color-loss)" }}>
                   {data.emergencyFundHealth.toFixed(1)} months
                 </p>
                 <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)" }}>
-                  {data.emergencyFundHealth >= 6 ? "Healthy ✓" : data.emergencyFundHealth >= 3 ? "Adequate" : "Build this up"}
+                  {data.emergencyFundHealth >= 6 ? "Healthy" : data.emergencyFundHealth >= 3 ? "Adequate" : "Build this up"}
                 </p>
               </div>
             </motion.div>
@@ -192,7 +194,7 @@ export default function DashboardPage() {
               className="glass-card"
               style={{ padding: "1.25rem 1.5rem", display: "flex", alignItems: "center", gap: "1rem" }}
             >
-              <div style={{ fontSize: "2rem" }}>⚖️</div>
+              <IconBadge icon={Scale} tone={data.debtRatio <= 0.3 ? "gain" : data.debtRatio <= 0.5 ? "warning" : "loss"} />
               <div>
                 <p style={{ fontSize: "0.6875rem", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--color-text-muted)", marginBottom: 4 }}>Debt Ratio</p>
                 <p style={{ fontSize: "1.25rem", fontWeight: 700, color: data.debtRatio <= 0.3 ? "var(--color-gain)" : data.debtRatio <= 0.5 ? "#FFB547" : "var(--color-loss)" }}>
@@ -211,7 +213,7 @@ export default function DashboardPage() {
               className="glass-card"
               style={{ padding: "1.25rem 1.5rem", display: "flex", alignItems: "center", gap: "1rem" }}
             >
-              <div style={{ fontSize: "2rem" }}>💵</div>
+              <IconBadge icon={Wallet} tone="gain" />
               <div>
                 <p style={{ fontSize: "0.6875rem", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--color-text-muted)", marginBottom: 4 }}>Monthly Passive Income</p>
                 <p style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--color-gain)" }}>
@@ -248,6 +250,8 @@ export default function DashboardPage() {
               />
             )}
           </div>
+
+          <SuggestionsPanel />
         </>
       )}
     </div>

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface ModalProps {
@@ -29,7 +30,21 @@ export function Modal({ open, onClose, title, children, width = 640 }: ModalProp
     return () => { document.body.style.overflow = ""; };
   }, [open]);
 
-  return (
+  // Portal to document.body: a `position: fixed` element positions itself
+  // relative to the nearest ancestor with a `transform` (or filter/
+  // perspective) set, NOT the viewport, if one exists in its containing
+  // chain. Framer Motion's `motion.div` wrappers elsewhere on these pages
+  // leave an inline `transform` on their element even at rest (after
+  // animating in), so a modal rendered inline in the page tree could end up
+  // positioned relative to one of those instead of the real viewport —
+  // anchored off in a corner and overflowing, rather than centered. A
+  // portal to `document.body` sidesteps this entirely, which is also why
+  // every real modal/dialog library (Radix, Headless UI, MUI) portals.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  if (!mounted) return null;
+
+  return createPortal(
     <AnimatePresence>
       {open && (
         <>
@@ -48,6 +63,30 @@ export function Modal({ open, onClose, title, children, width = 640 }: ModalProp
             }}
           />
 
+          {/* Positioning wrapper — plain div, NOT motion.div. Framer Motion
+              owns the `transform` CSS property whenever `scale`/`y`/`x` are
+              animated on an element, and it overwrites (not merges with) any
+              manually-set `transform` in `style` — so the centering
+              `translate(-50%, -50%)` and the entrance animation's
+              scale/y transform cannot safely live on the same element. This
+              was a real, reproduced bug: the modal rendered with its
+              top-left corner (not its center) pinned to the viewport's
+              center point, so it visually hung off toward the bottom-right
+              and its lower content was unreachable. Splitting the centering
+              transform (here) from the animation transform (the inner
+              motion.div below) fixes it. */}
+          <div
+            key="panel-position"
+            style={{
+              position: "fixed",
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -50%)",
+              zIndex: 1001,
+              width: `min(${width}px, calc(100vw - 32px))`,
+              maxHeight: "92vh",
+            }}
+          >
           {/* Panel — flex column, scrollable body, pinned footer */}
           <motion.div
             key="panel"
@@ -56,12 +95,7 @@ export function Modal({ open, onClose, title, children, width = 640 }: ModalProp
             exit={{ opacity: 0, scale: 0.96, y: 12 }}
             transition={{ duration: 0.22, ease: [0.25, 0.1, 0.25, 1] }}
             style={{
-              position: "fixed",
-              top: "50%",
-              left: "50%",
-              transform: "translate(-50%, -50%)",
-              zIndex: 1001,
-              width: `min(${width}px, calc(100vw - 32px))`,
+              width: "100%",
               maxHeight: "92vh",
               display: "flex",
               flexDirection: "column",
@@ -108,8 +142,10 @@ export function Modal({ open, onClose, title, children, width = 640 }: ModalProp
               {children}
             </div>
           </motion.div>
+          </div>
         </>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }

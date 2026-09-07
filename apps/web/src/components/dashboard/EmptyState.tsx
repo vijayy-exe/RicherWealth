@@ -2,14 +2,16 @@
 
 import { motion } from "framer-motion";
 import Link from "next/link";
+import { TrendingUp, Bitcoin, Home, Landmark, Coins, Wallet, Gem } from "lucide-react";
+import { IconBadge } from "@/components/ui/IconBadge";
 
 const QUICK_ADD = [
-  { icon: "📈", label: "Stocks & ETFs", href: "/assets/add?type=STOCK" },
-  { icon: "₿", label: "Cryptocurrency", href: "/assets/add?type=CRYPTO" },
-  { icon: "🏠", label: "Real Estate", href: "/assets/add?type=REAL_ESTATE" },
-  { icon: "🏦", label: "Mutual Funds", href: "/assets/add?type=MUTUAL_FUND" },
-  { icon: "✨", label: "Gold & Silver", href: "/assets/add?type=GOLD" },
-  { icon: "🏧", label: "Cash & Bank", href: "/assets/add?type=CASH" },
+  { icon: TrendingUp, label: "Stocks & ETFs", href: "/assets/add?type=STOCK" },
+  { icon: Bitcoin, label: "Cryptocurrency", href: "/assets/add?type=CRYPTO" },
+  { icon: Home, label: "Real Estate", href: "/assets/add?type=REAL_ESTATE" },
+  { icon: Landmark, label: "Mutual Funds", href: "/assets/add?type=MUTUAL_FUND" },
+  { icon: Coins, label: "Gold & Silver", href: "/assets/add?type=GOLD" },
+  { icon: Wallet, label: "Cash & Bank", href: "/assets/add?type=CASH" },
 ];
 
 export function EmptyState() {
@@ -26,19 +28,17 @@ export function EmptyState() {
         animate={{ scale: 1, opacity: 1 }}
         transition={{ duration: 0.7, delay: 0.1 }}
         style={{
-          width: 120,
-          height: 120,
+          width: 96,
+          height: 96,
           margin: "0 auto 2rem",
           borderRadius: "50%",
           background: "var(--color-accent-muted)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          fontSize: "3.5rem",
-          boxShadow: "var(--shadow-glow-accent)",
         }}
       >
-        💎
+        <Gem size={40} strokeWidth={1.75} color="var(--color-accent)" />
       </motion.div>
 
       <motion.h2
@@ -105,7 +105,7 @@ export function EmptyState() {
                 transition: "all 0.2s ease",
               }}
             >
-              <span style={{ fontSize: "1.75rem" }}>{item.icon}</span>
+              <IconBadge icon={item.icon} tone="accent" size={36} />
               <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--color-text-secondary)" }}>
                 {item.label}
               </span>

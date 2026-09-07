@@ -58,7 +58,7 @@ function PlaidConnectButton() {
     <button
       onClick={() => void handleClick()}
       disabled={createLinkToken.isPending || exchangeToken.isPending}
-      style={{ ...buttonStyle, background: "linear-gradient(135deg, #3D83FF, #00D97E)" }}
+      style={{ ...buttonStyle, background: "var(--color-accent)" }}
     >
       {exchangeToken.isPending ? "Connecting…" : createLinkToken.isPending ? "Loading…" : "🏦 Connect a Bank (Plaid Sandbox)"}
     </button>
