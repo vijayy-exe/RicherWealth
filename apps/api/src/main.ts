@@ -1,10 +1,15 @@
 import { NestFactory } from "@nestjs/core";
 import { ValidationPipe } from "@nestjs/common";
+import helmet from "helmet";
 
 import { AppModule } from "./app.module";
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // Phase 22: standard security headers (HSTS, X-Content-Type-Options,
+  // X-Frame-Options, etc.) — previously entirely absent.
+  app.use(helmet());
 
   // Global validation pipe — strips unknown properties, transforms types
   app.useGlobalPipes(

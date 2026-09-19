@@ -17,6 +17,8 @@ const mockPrisma = {
   user: { findUniqueOrThrow: jest.fn(), findMany: jest.fn() },
   asset: { findMany: jest.fn() },
   liability: { findMany: jest.fn() },
+  household: { findUniqueOrThrow: jest.fn() },
+  householdMember: { findMany: jest.fn() },
   netWorthSnapshot: {
     upsert: jest.fn(),
     findMany: jest.fn(),
@@ -71,6 +73,9 @@ describe("NetWorthService", () => {
 
     service = module.get<NetWorthService>(NetWorthService);
     jest.clearAllMocks();
+    // Default: no household memberships — every pre-Phase-21 test below
+    // exercises exactly the same single-user behavior as before.
+    mockPrisma.householdMember.findMany.mockResolvedValue([]);
   });
 
   // ─── calculateNetWorth ────────────────────────────────────────────────────
@@ -198,6 +203,54 @@ describe("NetWorthService", () => {
         "net-worth.updated",
         expect.objectContaining({ userId: "user1" }),
       );
+    });
+  });
+
+  // ─── Phase 21: household-aware net worth (acceptance criterion 1) ─────────
+
+  describe("household net worth (Family Office mode)", () => {
+    const JOINT_HOUSE = { type: "REAL_ESTATE", currentValue: { toString: () => "500000" }, currencyCode: "INR" };
+    const PERSONAL_STOCK = { type: "STOCK", currentValue: { toString: () => "100000" }, currencyCode: "INR" };
+
+    it("shows a joint asset at FULL value in a member's own dashboard", async () => {
+      mockPrisma.user.findUniqueOrThrow.mockResolvedValue(BASE_USER);
+      mockPrisma.householdMember.findMany.mockResolvedValue([{ householdId: "hh1" }]);
+      // The Prisma mock ignores the `where` shape and just returns what we
+      // tell it to — the real dedup guarantee is proven by the household
+      // aggregate test below, which queries once for the whole household.
+      mockPrisma.asset.findMany.mockResolvedValue([JOINT_HOUSE, PERSONAL_STOCK]);
+      mockPrisma.liability.findMany.mockResolvedValue([]);
+
+      const result = await service.calculateNetWorth("spouseA");
+
+      expect(result.totalAssets.toNumber()).toBeCloseTo(600_000, 0); // full 500k house + 100k stock, not halved
+    });
+
+    it("household aggregate counts a joint asset exactly once, not once per member", async () => {
+      mockPrisma.household.findUniqueOrThrow.mockResolvedValue({ baseCurrency: "INR" });
+      mockPrisma.householdMember.findMany.mockResolvedValue([{ userId: "spouseA" }, { userId: "spouseB" }]);
+      // A correct implementation queries the household's assets ONCE — the
+      // joint house appears a single time in this result set, regardless
+      // of how many members belong to the household.
+      mockPrisma.asset.findMany.mockResolvedValue([JOINT_HOUSE]);
+      mockPrisma.liability.findMany.mockResolvedValue([]);
+
+      const result = await service.calculateHouseholdNetWorth("hh1");
+
+      expect(result.totalAssets.toNumber()).toBeCloseTo(500_000, 0); // NOT 1,000,000
+      expect(mockPrisma.asset.findMany).toHaveBeenCalledTimes(1);
+    });
+
+    it("a user with no household memberships behaves exactly as before (regression guard)", async () => {
+      mockPrisma.user.findUniqueOrThrow.mockResolvedValue(BASE_USER);
+      mockPrisma.householdMember.findMany.mockResolvedValue([]);
+      mockPrisma.asset.findMany.mockResolvedValue(ASSETS_INR);
+      mockPrisma.liability.findMany.mockResolvedValue(LIABILITIES_INR);
+
+      const result = await service.calculateNetWorth("user1");
+
+      expect(result.totalAssets.toNumber()).toBeCloseTo(1_800_000, 0);
+      expect(result.netWorth.toNumber()).toBeCloseTo(1_200_000, 0);
     });
   });
 });

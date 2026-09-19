@@ -4,6 +4,9 @@ import { GraphQLModule } from "@nestjs/graphql";
 import { ApolloDriver, ApolloDriverConfig } from "@nestjs/apollo";
 import { ScheduleModule } from "@nestjs/schedule";
 import { EventEmitterModule } from "@nestjs/event-emitter";
+import { ThrottlerModule } from "@nestjs/throttler";
+import { AppThrottlerGuard } from "./common/guards/app-throttler.guard";
+import { APP_GUARD } from "@nestjs/core";
 import { join } from "path";
 
 import { AppController } from "./app.controller";
@@ -54,6 +57,13 @@ import { NotificationsModule } from "./notifications/notifications.module";
 import { ReportsModule } from "./reports/reports.module";
 // Phase 19
 import { AiModule } from "./ai/ai.module";
+// Phase 20
+import { WealthModule } from "./wealth/wealth.module";
+// Phase 21
+import { HouseholdModule } from "./household/household.module";
+import { EstatePlanningModule } from "./estate-planning/estate-planning.module";
+// Phase 22
+import { AuditModule } from "./audit/audit.module";
 
 @Module({
   imports: [
@@ -64,6 +74,14 @@ import { AiModule } from "./ai/ai.module";
 
     // Event bus for decoupled module communication (e.g. net-worth → WebSocket)
     EventEmitterModule.forRoot(),
+
+    // Phase 22: global rate limiting — previously entirely absent from
+    // every route, including auth-adjacent ones (MFA/passkey verification).
+    // A stricter per-route limit is applied to mfa/verify specifically
+    // (see auth.controller.ts) since it's the one real brute-forceable
+    // secret-verification endpoint this backend exposes (password
+    // login/signup itself goes through Supabase directly, not this API).
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
 
     // Cron job infrastructure
     ScheduleModule.forRoot(),
@@ -86,12 +104,21 @@ import { AiModule } from "./ai/ai.module";
       driver: ApolloDriver,
       autoSchemaFile: join(process.cwd(), "src/schema.gql"),
       sortSchema: true,
-      context: ({ req }: { req: unknown }) => ({ req }),
+      // `res` is included alongside `req` for AppThrottlerGuard, which
+      // needs both to set rate-limit response headers on GraphQL requests
+      // the same way it does for REST ones.
+      context: ({ req, res }: { req: unknown; res: unknown }) => ({ req, res }),
       playground: process.env["NODE_ENV"] !== "production",
+      // Phase 22: explicitly pinned rather than relying on Apollo's
+      // implicit default, which has differed across Apollo Server
+      // versions — this repo has exactly one GraphQL query
+      // (dashboardSummary) despite PROJECT_CONTEXT.md's broader claim.
+      introspection: process.env["NODE_ENV"] !== "production",
     }),
 
     // Core
     PrismaModule,
+    AuditModule,
 
     // Domain modules
     AuthModule,
@@ -136,12 +163,20 @@ import { AiModule } from "./ai/ai.module";
     ReportsModule,
     // Phase 19
     AiModule,
+    // Phase 20
+    WealthModule,
+    // Phase 21
+    HouseholdModule,
+    EstatePlanningModule,
 
     // Phase 3+
     // AssetsModule,
     // LiabilitiesModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    { provide: APP_GUARD, useClass: AppThrottlerGuard },
+  ],
 })
 export class AppModule {}

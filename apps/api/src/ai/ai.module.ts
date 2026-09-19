@@ -8,6 +8,8 @@ import { GoalsModule } from "../goals/goals.module";
 import { NetWorthModule } from "../net-worth/net-worth.module";
 import { AnalyticsModule } from "../analytics/analytics.module";
 import { TaxModule } from "../tax/tax.module";
+import { LiabilitiesModule } from "../liabilities/liabilities.module";
+import { NotificationsModule } from "../notifications/notifications.module";
 
 import { AiController } from "./ai.controller";
 import { EmbeddingService } from "./rag/embedding.service";
@@ -24,6 +26,8 @@ import { AiReportProcessor, AI_REPORTS_QUEUE } from "./reports/ai-report.process
 import { AiReportScheduler } from "./reports/ai-report.scheduler";
 import { SuggestionEngineService } from "./suggestions/suggestion-engine.service";
 import { SuggestionsController } from "./suggestions/suggestions.controller";
+import { AiSuggestionScanProcessor, AI_SUGGESTION_SCAN_QUEUE } from "./suggestions/ai-suggestion-scan.processor";
+import { AiSuggestionScanScheduler } from "./suggestions/ai-suggestion-scan.scheduler";
 
 @Module({
   imports: [
@@ -34,7 +38,9 @@ import { SuggestionsController } from "./suggestions/suggestions.controller";
     NetWorthModule,
     AnalyticsModule,
     TaxModule,
-    BullModule.registerQueue({ name: AI_REPORTS_QUEUE }),
+    LiabilitiesModule,
+    NotificationsModule,
+    BullModule.registerQueue({ name: AI_REPORTS_QUEUE }, { name: AI_SUGGESTION_SCAN_QUEUE }),
   ],
   controllers: [AiController, ChatController, SuggestionsController],
   providers: [
@@ -50,7 +56,12 @@ import { SuggestionsController } from "./suggestions/suggestions.controller";
     AiReportProcessor,
     AiReportScheduler,
     SuggestionEngineService,
+    AiSuggestionScanProcessor,
+    AiSuggestionScanScheduler,
   ],
-  exports: [LlmOrchestratorService, RetrievalService],
+  // SuggestionEngineService also exported for Phase 20's ReportsModule (the
+  // Health Audit PDF's "Opportunities" section reuses SuggestionEngineService.listActive
+  // rather than re-deriving suggestion cards).
+  exports: [LlmOrchestratorService, RetrievalService, SuggestionEngineService],
 })
 export class AiModule {}

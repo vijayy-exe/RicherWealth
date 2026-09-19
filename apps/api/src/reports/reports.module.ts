@@ -7,6 +7,9 @@ import { LiabilitiesModule } from "../liabilities/liabilities.module";
 import { TransactionsModule } from "../transactions/transactions.module";
 import { StocksModule } from "../stocks/stocks.module";
 import { AiModule } from "../ai/ai.module";
+import { RiskEngineModule } from "../risk/risk-engine.module";
+import { GoalsModule } from "../goals/goals.module";
+import { WealthModule } from "../wealth/wealth.module";
 
 import { ReportsController } from "./reports.controller";
 import { ExportController } from "./export.controller";
@@ -21,7 +24,10 @@ import { LlmExecutiveSummaryProvider } from "./llm-executive-summary.provider";
  * dependency back on ReportsModule, so this doesn't create a cycle.
  */
 @Module({
-  imports: [NetWorthModule, AnalyticsModule, TaxModule, AssetsModule, LiabilitiesModule, TransactionsModule, StocksModule, AiModule],
+  imports: [
+    NetWorthModule, AnalyticsModule, TaxModule, AssetsModule, LiabilitiesModule, TransactionsModule, StocksModule, AiModule,
+    RiskEngineModule, GoalsModule, WealthModule,
+  ],
   controllers: [ReportsController, ExportController],
   providers: [
     ReportsService,

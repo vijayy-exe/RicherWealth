@@ -13,6 +13,7 @@ import {
 } from "@nestjs/common";
 import type { Request } from "express";
 import type { RegistrationResponseJSON } from "@simplewebauthn/server";
+import { Throttle } from "@nestjs/throttler";
 
 import { AuthService } from "./auth.service";
 import { SupabaseAuthGuard } from "./guards/supabase-auth.guard";
@@ -152,6 +153,10 @@ export class AuthController {
   @Post("mfa/verify")
   @UseGuards(SupabaseAuthGuard)
   @HttpCode(HttpStatus.OK)
+  // Phase 22: a 6-digit TOTP code is brute-forceable at the global 100/min
+  // default — 5/min makes an online brute force impractical while still
+  // comfortably covering fat-fingered retries.
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   async verifyTotp(
     @CurrentUser() user: UserWithRelations,
     @Body() dto: VerifyTotpDto,

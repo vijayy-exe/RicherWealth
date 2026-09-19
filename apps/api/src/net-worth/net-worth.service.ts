@@ -71,25 +71,87 @@ export class NetWorthService {
   /**
    * Calculate real-time net worth from live Asset / Liability rows.
    * Converts every monetary value to the user's baseCurrency.
+   *
+   * Phase 21: also includes, at FULL value, any household-owned (joint)
+   * asset/liability belonging to a household this user is a member of —
+   * so a spouse's own dashboard shows "our house" as the real value, not a
+   * fraction. This is deliberately NOT how the household aggregate
+   * (calculateHouseholdNetWorth below) avoids double-counting — the
+   * aggregate re-queries a deduplicated union rather than summing
+   * individual views, so summing N members' individual net worths would
+   * NOT equal the household aggregate, and must never be done.
    */
   async calculateNetWorth(userId: string): Promise<NetWorthResult> {
-    const user = await this.prisma.user.findUniqueOrThrow({
-      where: { id: userId },
-      select: { baseCurrency: true },
-    });
+    const [user, householdIds] = await Promise.all([
+      this.prisma.user.findUniqueOrThrow({
+        where: { id: userId },
+        select: { baseCurrency: true },
+      }),
+      this.prisma.householdMember.findMany({ where: { userId }, select: { householdId: true } }),
+    ]);
     const base = user.baseCurrency;
+    const memberOfHouseholdIds = householdIds.map((h) => h.householdId);
+    const ownedOrJointOr = [
+      { userId, householdId: null },
+      ...(memberOfHouseholdIds.length > 0 ? [{ householdId: { in: memberOfHouseholdIds } }] : []),
+    ];
 
     const [assets, liabilities] = await Promise.all([
       this.prisma.asset.findMany({
-        where: { userId, deletedAt: null },
+        where: { deletedAt: null, OR: ownedOrJointOr },
         select: { type: true, currentValue: true, currencyCode: true },
       }),
       this.prisma.liability.findMany({
-        where: { userId, deletedAt: null },
+        where: { deletedAt: null, OR: ownedOrJointOr },
         select: { remainingBalance: true, currencyCode: true },
       }),
     ]);
 
+    return this.aggregate(assets, liabilities, base);
+  }
+
+  /**
+   * Household aggregate net worth: every unique asset/liability visible to
+   * the household counted EXACTLY ONCE — household-owned rows, plus each
+   * member's own personally-owned (non-joint) rows. This is a fresh
+   * deduplicated query, not a sum of members' calculateNetWorth() results
+   * (which would double-count a joint asset once per member showing it at
+   * full value) — structurally impossible to double-count as a result.
+   */
+  async calculateHouseholdNetWorth(householdId: string): Promise<NetWorthResult> {
+    const [household, members] = await Promise.all([
+      this.prisma.household.findUniqueOrThrow({ where: { id: householdId }, select: { baseCurrency: true } }),
+      this.prisma.householdMember.findMany({ where: { householdId }, select: { userId: true } }),
+    ]);
+    const base = household.baseCurrency;
+    const memberIds = members.map((m) => m.userId);
+
+    const uniqueToHousehold = {
+      OR: [
+        { householdId },
+        { userId: { in: memberIds }, householdId: null },
+      ],
+    };
+
+    const [assets, liabilities] = await Promise.all([
+      this.prisma.asset.findMany({
+        where: { deletedAt: null, ...uniqueToHousehold },
+        select: { type: true, currentValue: true, currencyCode: true },
+      }),
+      this.prisma.liability.findMany({
+        where: { deletedAt: null, ...uniqueToHousehold },
+        select: { remainingBalance: true, currencyCode: true },
+      }),
+    ]);
+
+    return this.aggregate(assets, liabilities, base);
+  }
+
+  private async aggregate(
+    assets: Array<{ type: string; currentValue: Decimal | string; currencyCode: string }>,
+    liabilities: Array<{ remainingBalance: Decimal | string; currencyCode: string }>,
+    base: string,
+  ): Promise<NetWorthResult> {
     // Convert and aggregate assets
     const allocationMap = new Map<string, Decimal>();
     const exposureMap = new Map<string, { native: Decimal; base: Decimal }>();
@@ -204,10 +266,21 @@ export class NetWorthService {
 
   /**
    * Calculate the change in net worth between now and a past snapshot.
+   *
+   * Phase 22: `current` may be passed in already-computed — a k6 load
+   * test surfaced that a single dashboard load was calling
+   * `calculateNetWorth` 5 independent times (this method 3x via
+   * getDashboardSummary's today/month/year deltas, once more via a
+   * separate getAssetGrowthRate call, plus getDashboardSummary's own
+   * direct call), each a full DB round trip, each now slightly heavier
+   * since Phase 21 added a household-membership lookup to it — measured
+   * as part of the real p95 latency under concurrent load. Optional and
+   * backward-compatible: existing external callers (e.g. ai-report.service)
+   * that don't pass it still get the original single-call behavior.
    */
-  async getDelta(userId: string, daysAgo: number): Promise<DeltaResult> {
-    const [current, snapshots] = await Promise.all([
-      this.calculateNetWorth(userId),
+  async getDelta(userId: string, daysAgo: number, current?: NetWorthResult): Promise<DeltaResult> {
+    const [resolvedCurrent, snapshots] = await Promise.all([
+      current ? Promise.resolve(current) : this.calculateNetWorth(userId),
       this.prisma.netWorthSnapshot.findMany({
         where: {
           userId,
@@ -220,7 +293,7 @@ export class NetWorthService {
       }),
     ]);
 
-    const currentValue = current.netWorth.toNumber();
+    const currentValue = resolvedCurrent.netWorth.toNumber();
     const pastValue = snapshots[0] ? new Decimal(snapshots[0].netWorth.toString()).toNumber() : currentValue;
     const absChange = currentValue - pastValue;
     const pctChange = pastValue !== 0 ? (absChange / Math.abs(pastValue)) * 100 : 0;
@@ -235,9 +308,9 @@ export class NetWorthService {
    * NetWorthSnapshot rows getDelta() reads, just projecting totalAssets
    * instead of netWorth.
    */
-  async getAssetGrowthRate(userId: string, daysAgo: number): Promise<DeltaResult> {
-    const [current, snapshots] = await Promise.all([
-      this.calculateNetWorth(userId),
+  async getAssetGrowthRate(userId: string, daysAgo: number, current?: NetWorthResult): Promise<DeltaResult> {
+    const [resolvedCurrent, snapshots] = await Promise.all([
+      current ? Promise.resolve(current) : this.calculateNetWorth(userId),
       this.prisma.netWorthSnapshot.findMany({
         where: { userId, snapshotDate: { lte: new Date(Date.now() - (daysAgo - 1) * 86400000) } },
         orderBy: { snapshotDate: "desc" },
@@ -245,7 +318,7 @@ export class NetWorthService {
       }),
     ]);
 
-    const currentValue = current.totalAssets.toNumber();
+    const currentValue = resolvedCurrent.totalAssets.toNumber();
     const pastValue = snapshots[0] ? new Decimal(snapshots[0].totalAssets.toString()).toNumber() : currentValue;
     const absChange = currentValue - pastValue;
     const pctChange = pastValue !== 0 ? (absChange / Math.abs(pastValue)) * 100 : 0;
@@ -255,12 +328,12 @@ export class NetWorthService {
 
   // ─── Full Dashboard Summary ───────────────────────────────────────────────
 
-  async getDashboardSummary(userId: string): Promise<DashboardSummary> {
-    const [current, todayDelta, monthDelta, yearDelta, snapshots] = await Promise.all([
-      this.calculateNetWorth(userId),
-      this.getDelta(userId, 1),
-      this.getDelta(userId, 30),
-      this.getDelta(userId, 365),
+  async getDashboardSummary(userId: string, precomputed?: NetWorthResult): Promise<DashboardSummary> {
+    const current = precomputed ?? (await this.calculateNetWorth(userId));
+    const [todayDelta, monthDelta, yearDelta, snapshots] = await Promise.all([
+      this.getDelta(userId, 1, current),
+      this.getDelta(userId, 30, current),
+      this.getDelta(userId, 365, current),
       this.getTrendSnapshots(userId),
     ]);
 

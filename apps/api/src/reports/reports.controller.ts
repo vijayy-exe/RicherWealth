@@ -45,4 +45,10 @@ export class ReportsController {
     const pdf = await this.reports.generateFinancialSnapshot(req.user.id);
     sendPdf(res, pdf, "richerwealth-financial-snapshot.pdf");
   }
+
+  @Get("health-audit")
+  async healthAudit(@Request() req: AuthRequest, @Res() res: Response, @Query("countryCode") countryCode = "US") {
+    const pdf = await this.reports.generateHealthAudit(req.user.id, countryCode);
+    sendPdf(res, pdf, "richerwealth-financial-health-audit.pdf");
+  }
 }

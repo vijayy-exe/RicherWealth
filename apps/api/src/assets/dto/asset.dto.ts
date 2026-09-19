@@ -23,6 +23,23 @@ export class CreateAssetDto {
   @IsOptional()
   @IsObject()
   details?: Record<string, unknown>;
+
+  // ─── Phase 21: Family Office & Estate Planning ───────────────────────────
+  @IsOptional()
+  @IsString()
+  householdId?: string;
+
+  @IsOptional()
+  @IsString()
+  nomineeName?: string;
+
+  @IsOptional()
+  @IsString()
+  nomineeRelationship?: string;
+
+  @IsOptional()
+  @IsString()
+  nomineeContact?: string;
 }
 
 export class UpdateAssetDto {
@@ -51,4 +68,19 @@ export class UpdateAssetDto {
   @IsOptional()
   @IsObject()
   details?: Record<string, unknown>;
+
+  // ─── Phase 21: Family Office & Estate Planning ───────────────────────────
+  // Nullable (not just optional) so the frontend can explicitly UNSET a
+  // household assignment or a nominee field, not just add one.
+  @IsOptional()
+  householdId?: string | null;
+
+  @IsOptional()
+  nomineeName?: string | null;
+
+  @IsOptional()
+  nomineeRelationship?: string | null;
+
+  @IsOptional()
+  nomineeContact?: string | null;
 }

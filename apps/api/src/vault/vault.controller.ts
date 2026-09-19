@@ -1,5 +1,6 @@
 import { Controller, Get, Post, Delete, Body, Param, UseGuards, Request } from "@nestjs/common";
 import { SupabaseAuthGuard } from "../auth/guards/supabase-auth.guard";
+import { AuditLog } from "../audit/audit-log.decorator";
 import { VaultService } from "./vault.service";
 import { setupVaultSchema, requestVaultUploadSchema, registerVaultDocumentSchema } from "./dto/vault.dto";
 
@@ -41,22 +42,26 @@ export class VaultController {
   }
 
   @Post("register")
+  @AuditLog("VAULT_DOCUMENT_REGISTERED", "VaultDocument")
   async register(@Request() req: AuthRequest, @Body() body: unknown) {
     const dto = registerVaultDocumentSchema.parse(body);
     return this.vault.register(req.user.id, dto);
   }
 
   @Get()
+  @AuditLog("VAULT_DOCUMENT_LIST_VIEWED", "VaultDocument")
   async list(@Request() req: AuthRequest) {
     return this.vault.findAll(req.user.id);
   }
 
   @Get(":id/download-url")
+  @AuditLog("VAULT_DOCUMENT_DOWNLOADED", "VaultDocument")
   async getDownloadUrl(@Request() req: AuthRequest, @Param("id") id: string) {
     return this.vault.getDownloadUrl(req.user.id, id);
   }
 
   @Delete(":id")
+  @AuditLog("VAULT_DOCUMENT_DELETED", "VaultDocument")
   async remove(@Request() req: AuthRequest, @Param("id") id: string) {
     return this.vault.remove(req.user.id, id);
   }

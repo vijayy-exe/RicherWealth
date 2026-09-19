@@ -64,7 +64,12 @@ export class SupabaseAuthGuard implements CanActivate {
       let supabaseName: string | null = null;
       let supabaseAvatar: string | null = null;
 
-      if (token === "dev-token" || token.startsWith("dev-")) {
+      // Phase 22: this bypass previously had NO environment gate at all —
+      // any bearer token starting with "dev-" authenticated as a demo user
+      // in every environment, including a hypothetical production
+      // deployment. Local/dev tooling (curl, k6) still works identically;
+      // only a `NODE_ENV=production` process now rejects it.
+      if ((token === "dev-token" || token.startsWith("dev-")) && process.env["NODE_ENV"] !== "production") {
         supabaseUserId = "dev-supabase-user-id";
         supabaseEmail = "demo@richerwealth.app";
         supabaseName = "Demo User";

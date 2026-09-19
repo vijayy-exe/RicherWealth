@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { PrismaModule } from "../prisma/prisma.module";
 import { StorageModule } from "../storage/storage.module";
+import { HouseholdModule } from "../household/household.module";
 import { VaultController } from "./vault.controller";
 import { VaultService } from "./vault.service";
 
@@ -14,7 +15,7 @@ import { VaultService } from "./vault.service";
  * tax-documents buckets.
  */
 @Module({
-  imports: [PrismaModule, StorageModule],
+  imports: [PrismaModule, StorageModule, HouseholdModule],
   controllers: [VaultController],
   providers: [VaultService],
   exports: [VaultService],

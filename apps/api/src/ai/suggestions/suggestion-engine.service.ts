@@ -1,9 +1,18 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AnalyticsService } from "../../analytics/analytics.service";
 import { HarvestingService } from "../../tax/harvesting.service";
+import { DividendTaxService } from "../../tax/dividend-tax.service";
 import { GoalsService, type GoalSuccessProbability, type GoalSuccessProbabilityError } from "../../goals/goals.service";
+import { LiabilitiesService } from "../../liabilities/liabilities.service";
+import { NetWorthService } from "../../net-worth/net-worth.service";
+import { computeDebtVsInvestment } from "../../net-worth/debt-vs-investment.util";
+import { NotificationDispatchService } from "../../notifications/notification-dispatch.service";
 import { LlmOrchestratorService } from "../llm/llm-orchestrator.service";
+import { classifyFundCategory } from "./fund-category-classifier";
+import { FUND_CATEGORY_BENCHMARKS } from "./fund-category-benchmarks.data";
+import { monthsToTarget, currentFinancialYear } from "@richer/shared-types";
+import Decimal from "decimal.js";
 import type { AiSuggestionType } from "@prisma/client";
 
 function isSuccessProbabilityError(x: GoalSuccessProbability | GoalSuccessProbabilityError): x is GoalSuccessProbabilityError {
@@ -14,6 +23,37 @@ const REBALANCE_CONCENTRATION_THRESHOLD_PCT = 40;
 const SELL_SINGLE_HOLDING_THRESHOLD_PCT = 25;
 const LOW_SUCCESS_PROBABILITY_THRESHOLD = 0.5;
 const MIN_HARVEST_LOSS_TO_SUGGEST = 50; // ignore trivial losses
+
+// ─── Phase 20: AI CFO / Copilot thresholds ──────────────────────────────────
+/** The "+₹5,000/month" what-if amount named explicitly in the feature spec. */
+const RETIREMENT_SIP_BOOST_AMOUNT = 5000;
+/** Ignore boosts that would only save a trivial amount of time — not worth surfacing as a card. */
+const MIN_MONTHS_SAVED_TO_SUGGEST = 3;
+
+/**
+ * The subset of AiSuggestionType that also gets delivered as a real
+ * Notification (Phase 17's bell/push/email pipeline), not just left sitting
+ * in the in-app Suggestions panel — the "AI CFO" framing from the feature
+ * spec. Every other suggestion type (REBALANCE, SELL, TAX_HARVEST,
+ * INCREASE_SIP, the Opportunity Scanner types) is the "AI Copilot" tier:
+ * always computed and queued, visible on demand, but not push/email-worthy
+ * on its own.
+ */
+export const CFO_TIER_TYPES: ReadonlySet<AiSuggestionType> = new Set(["DEBT_COST_ALERT", "RETIREMENT_ACCELERATION"]);
+
+// ─── Phase 20: Opportunity Scanner thresholds ───────────────────────────────
+/** A holding's expense ratio must exceed its category benchmark by this
+ * relative margin before it's worth flagging — catches grossly-outlying
+ * fees, not routine noise around the (deliberately rough) benchmark figure. */
+const LOW_FEE_MARGIN_MULTIPLIER = 1.2; // 20% above benchmark
+/** Only evaluate dividend-yield gaps for categories where a benchmark yield
+ * at or above this is itself meaningful (income-oriented categories) —
+ * flagging a growth equity fund for paying low dividends would be actively
+ * bad advice, since minimizing distributions is often intentional there. */
+const INCOME_ORIENTED_YIELD_THRESHOLD_PCT = 2.0;
+/** Minimum percentage-point gap between a holding's actual trailing yield
+ * and its category benchmark before it's worth flagging. */
+const MIN_DIVIDEND_YIELD_GAP_PCT = 1.0;
 
 interface DraftSuggestion {
   type: AiSuggestionType;
@@ -35,7 +75,7 @@ interface DraftSuggestion {
  * so that suggestion type is a documented gap, not a fabricated rule.
  */
 @Injectable()
-export class SuggestionEngineService {
+export class SuggestionEngineService implements OnModuleInit {
   private readonly logger = new Logger(SuggestionEngineService.name);
 
   constructor(
@@ -43,8 +83,39 @@ export class SuggestionEngineService {
     private readonly analytics: AnalyticsService,
     private readonly harvesting: HarvestingService,
     private readonly goals: GoalsService,
+    private readonly liabilities: LiabilitiesService,
+    private readonly netWorth: NetWorthService,
+    private readonly notifications: NotificationDispatchService,
     private readonly orchestrator: LlmOrchestratorService,
+    private readonly dividendTax: DividendTaxService,
   ) {}
+
+  /** Idempotent upsert of the curated FundCategoryBenchmark reference table
+   * (unique on `category`) — see fund-category-benchmarks.data.ts for why
+   * this is manually curated rather than seeded elsewhere. Runs on every
+   * boot so the table is always present without a separate seed-script step. */
+  async onModuleInit(): Promise<void> {
+    try {
+      for (const row of FUND_CATEGORY_BENCHMARKS) {
+        await this.prisma.fundCategoryBenchmark.upsert({
+          where: { category: row.category },
+          create: {
+            category: row.category,
+            typicalExpenseRatioPct: row.typicalExpenseRatioPct,
+            typicalDividendYieldPct: row.typicalDividendYieldPct,
+            exampleLowCostTicker: row.exampleLowCostTicker,
+          },
+          update: {
+            typicalExpenseRatioPct: row.typicalExpenseRatioPct,
+            typicalDividendYieldPct: row.typicalDividendYieldPct,
+            exampleLowCostTicker: row.exampleLowCostTicker,
+          },
+        });
+      }
+    } catch (err) {
+      this.logger.warn(`Failed to seed FundCategoryBenchmark rows (Opportunity Scanner's fee/yield checks will find nothing to compare against until this succeeds): ${String(err)}`);
+    }
+  }
 
   async generateForUser(userId: string): Promise<{ created: number; total: number }> {
     const drafts: DraftSuggestion[] = [];
@@ -52,20 +123,47 @@ export class SuggestionEngineService {
     drafts.push(...(await this.checkHarvesting(userId)));
     drafts.push(...(await this.checkConcentration(userId)));
     drafts.push(...(await this.checkGoalProbability(userId)));
+    drafts.push(...(await this.checkDebtVsInvestment(userId)));
+    drafts.push(...(await this.checkRetirementAcceleration(userId)));
+    drafts.push(...(await this.checkLowFeeAlternatives(userId)));
+    drafts.push(...(await this.checkDividendOpportunities(userId)));
 
     let created = 0;
     for (const draft of drafts) {
       const description = await this.refineDescription(draft);
+      let suggestionId: string;
       try {
-        await this.prisma.aiSuggestion.create({
+        const suggestion = await this.prisma.aiSuggestion.create({
           data: { userId, type: draft.type, title: draft.title, description, dataPoint: draft.dataPoint as never, dedupeKey: draft.dedupeKey },
         });
+        suggestionId = suggestion.id;
         created++;
       } catch (err) {
         // Unique constraint on (userId, dedupeKey) — same pattern as Phase
         // 17's Notification idempotency guard. A conflict just means this
         // exact condition already has an active card; not an error.
         if (!isUniqueConstraintViolation(err)) throw err;
+        continue;
+      }
+
+      // AI CFO tier: a genuinely NEW suggestion (we only reach here past the
+      // dedupe-conflict `continue` above) of a CFO_TIER_TYPES type also goes
+      // out through Phase 17's full notification pipeline (bell/push/email,
+      // preferences, quiet hours) — reusing notifyOnce's own idempotency
+      // guard (keyed on this suggestion's freshly-created id) means this can
+      // never double-notify even if generateForUser somehow ran twice.
+      if (CFO_TIER_TYPES.has(draft.type)) {
+        await this.notifications
+          .notifyOnce({
+            userId,
+            type: "AI_INSIGHT",
+            title: draft.title,
+            body: description,
+            data: draft.dataPoint,
+            sourceEntityId: suggestionId,
+            triggerBucket: "ONCE",
+          })
+          .catch((err) => this.logger.warn(`AI CFO notification delivery failed for suggestion ${suggestionId}: ${String(err)}`));
       }
     }
     return { created, total: drafts.length };
@@ -177,6 +275,210 @@ export class SuggestionEngineService {
           dedupeKey: `increase-sip:${goal.id}`,
         });
       }
+    }
+    return out;
+  }
+
+  /**
+   * The AI CFO's flagship example, verbatim: "your debt costs more than
+   * your investments earn." Reuses `computeDebtVsInvestment` — the SAME
+   * pure function `DashboardResolver.dashboardSummary` calls — so this
+   * check and the Dashboard's own debt-vs-investment banner can never
+   * silently disagree about the underlying numbers.
+   */
+  private async checkDebtVsInvestment(userId: string): Promise<DraftSuggestion[]> {
+    const [liabilitiesSummary, assetGrowth] = await Promise.all([
+      this.liabilities.getPortfolioSummary(userId).catch(() => null),
+      this.netWorth.getAssetGrowthRate(userId, 365).catch((err: unknown) => {
+        this.logger.warn(`getAssetGrowthRate failed, skipping debt-vs-investment check: ${String(err)}`);
+        return null;
+      }),
+    ]);
+    if (!assetGrowth) return [];
+
+    const result = computeDebtVsInvestment({
+      debtCostPct: liabilitiesSummary?.weightedInterestRate ?? 0,
+      totalOutstanding: liabilitiesSummary?.totalOutstanding ?? 0,
+      investmentReturnPct: assetGrowth.pctChange,
+    });
+    if (!result.debtCostExceedsInvestmentReturns) return [];
+
+    // Monthly dedupe bucket, not "ONCE" — this is an ongoing STRUCTURAL
+    // condition (unlike a one-time event like a single tax lot), so it
+    // should be able to resurface once a month if it's still true, rather
+    // than going silent forever after the user dismisses the first card.
+    const monthBucket = new Date().toISOString().slice(0, 7); // yyyy-mm
+    return [
+      {
+        type: "DEBT_COST_ALERT",
+        title: "Your debt is costing more than your investments earn",
+        description: `Your outstanding debt (${result.totalOutstanding.toFixed(2)}) carries a weighted average interest rate of ${result.debtCostPct.toFixed(1)}% — an estimated ${result.annualInterestCost.toFixed(2)} per year — while your investments grew ${result.investmentReturnPct.toFixed(1)}% over the trailing 12 months. Paying down this debt is currently a mathematically better use of surplus cash than investing it further.`,
+        dataPoint: { ...result },
+        dedupeKey: `debt-cost-alert:${monthBucket}`,
+      },
+    ];
+  }
+
+  /**
+   * For each RETIREMENT-type goal, computes how many months sooner the
+   * target would be reached with an extra ₹5,000/month contribution — a
+   * REAL closed-form calculation (`monthsToTarget`, the algebraic inverse
+   * of the same `sipFutureValue` annuity formula `requiredSipForTarget`
+   * already uses for Phase 13's goal math), not an LLM guess. Anchors "now"
+   * at the goal's own mathematically REQUIRED contribution
+   * (`baseline.contributionUsed`, which by construction reaches the target
+   * in exactly `baseline.monthsRemaining`) rather than an assumed real-world
+   * SIP amount, since the schema doesn't track a goal's actual recurring
+   * contribution separately from its target — the suggestion text is
+   * phrased around "the required contribution" so this framing is never
+   * misrepresented as reading the user's real bank debit.
+   */
+  private async checkRetirementAcceleration(userId: string): Promise<DraftSuggestion[]> {
+    const goalList = await this.goals.findAll(userId);
+    const retirementGoals = goalList.filter((g) => g.type === "RETIREMENT");
+    const out: DraftSuggestion[] = [];
+
+    for (const goal of retirementGoals) {
+      const baseline = await this.goals.getSuccessProbability(userId, goal.id).catch(() => null);
+      if (!baseline || isSuccessProbabilityError(baseline) || baseline.alreadyAchieved) continue;
+      if (baseline.contributionUsed <= 0) continue; // nothing to boost from
+
+      const targetAmount = new Decimal(goal.targetAmount.toString()).toNumber();
+      const boostedContribution = baseline.contributionUsed + RETIREMENT_SIP_BOOST_AMOUNT;
+      const boostedMonths = monthsToTarget(targetAmount, goal.currentProgress, baseline.assumedAnnualReturnPct, boostedContribution);
+      if (boostedMonths === null) continue;
+
+      const monthsSaved = baseline.monthsRemaining - boostedMonths;
+      if (monthsSaved < MIN_MONTHS_SAVED_TO_SUGGEST) continue;
+
+      const yearsSaved = monthsSaved / 12;
+      out.push({
+        type: "RETIREMENT_ACCELERATION",
+        title: `Reach "${goal.name}" about ${yearsSaved.toFixed(1)} years sooner`,
+        description: `"${goal.name}" currently needs a required contribution of ${baseline.contributionUsed.toFixed(2)}/month to hit its target in ${baseline.monthsRemaining} months. Increasing that by ${RETIREMENT_SIP_BOOST_AMOUNT}/month (to ${boostedContribution.toFixed(2)}/month) would reach the same target in about ${boostedMonths} months instead — roughly ${monthsSaved} months (${yearsSaved.toFixed(1)} years) sooner.`,
+        dataPoint: {
+          goalId: goal.id,
+          goalName: goal.name,
+          currentRequiredContribution: baseline.contributionUsed,
+          boostedContribution,
+          boostAmount: RETIREMENT_SIP_BOOST_AMOUNT,
+          baselineMonthsRemaining: baseline.monthsRemaining,
+          boostedMonthsRemaining: boostedMonths,
+          monthsSaved,
+        },
+        dedupeKey: `retirement-acceleration:${goal.id}`,
+      });
+    }
+    return out;
+  }
+
+  /**
+   * Opportunity Scanner — flags a mutual fund holding whose expense ratio
+   * meaningfully exceeds the typical fee for its category (classified via
+   * `classifyFundCategory`'s fund-name heuristic, since no `category`
+   * column exists on `MutualFundHolding`). Holdings with no recorded
+   * `expenseRatio`, or whose name matches no known category, are silently
+   * excluded — never guessed at.
+   */
+  private async checkLowFeeAlternatives(userId: string): Promise<DraftSuggestion[]> {
+    const holdings = await this.prisma.mutualFundHolding.findMany({
+      where: { userId, asset: { deletedAt: null } },
+      select: { id: true, fundName: true, expenseRatio: true, schemeCode: true },
+    });
+    const out: DraftSuggestion[] = [];
+
+    for (const holding of holdings) {
+      if (holding.expenseRatio === null) continue;
+      const category = classifyFundCategory(holding.fundName);
+      if (category === null) continue;
+
+      const benchmark = await this.prisma.fundCategoryBenchmark.findUnique({ where: { category } });
+      if (!benchmark) continue;
+
+      const actualExpenseRatio = new Decimal(holding.expenseRatio.toString()).toNumber();
+      const benchmarkExpenseRatio = new Decimal(benchmark.typicalExpenseRatioPct.toString()).toNumber();
+      if (actualExpenseRatio <= benchmarkExpenseRatio * LOW_FEE_MARGIN_MULTIPLIER) continue;
+
+      out.push({
+        type: "LOW_FEE_ALTERNATIVE",
+        title: `${holding.fundName} charges above-typical fees for its category`,
+        description: `${holding.fundName} (classified as ${category}) has an expense ratio of ${actualExpenseRatio.toFixed(2)}%, above the typical ${benchmarkExpenseRatio.toFixed(2)}% for this category${benchmark.exampleLowCostTicker ? ` — a lower-cost example in the same category is ${benchmark.exampleLowCostTicker}` : ""}. Even a small expense-ratio difference compounds meaningfully over a long holding period.`,
+        dataPoint: {
+          holdingId: holding.id,
+          fundName: holding.fundName,
+          category,
+          actualExpenseRatio,
+          benchmarkExpenseRatio,
+          exampleLowCostTicker: benchmark.exampleLowCostTicker,
+        },
+        dedupeKey: `low-fee-alternative:${holding.id}`,
+      });
+    }
+    return out;
+  }
+
+  /**
+   * Opportunity Scanner — flags a mutual fund holding whose REAL trailing
+   * dividend income (this financial year's user-recorded `DividendTaxService`
+   * records, matched by `ticker === schemeCode`, NOT an assumption) falls
+   * meaningfully short of its category's typical yield — restricted to
+   * INCOME-ORIENTED categories only (a growth-equity fund intentionally
+   * minimizing distributions is not a "problem" this check should flag).
+   */
+  private async checkDividendOpportunities(userId: string): Promise<DraftSuggestion[]> {
+    const holdings = await this.prisma.mutualFundHolding.findMany({
+      where: { userId, asset: { deletedAt: null } },
+      select: { id: true, fundName: true, schemeCode: true, asset: { select: { currentValue: true } } },
+    });
+    if (holdings.length === 0) return [];
+
+    const financialYear = currentFinancialYear("IN");
+    const dividendSummary = await this.dividendTax.getDividendSummary(userId, financialYear, "IN").catch((err: unknown) => {
+      this.logger.warn(`getDividendSummary failed, skipping dividend-opportunity check: ${String(err)}`);
+      return null;
+    });
+    if (!dividendSummary) return [];
+
+    const dividendsByTicker = new Map<string, number>();
+    for (const record of dividendSummary.records) {
+      if (record.holdingType !== "MUTUAL_FUND") continue;
+      dividendsByTicker.set(record.ticker, (dividendsByTicker.get(record.ticker) ?? 0) + record.amount);
+    }
+
+    const out: DraftSuggestion[] = [];
+    for (const holding of holdings) {
+      const category = classifyFundCategory(holding.fundName);
+      if (category === null) continue;
+
+      const benchmark = await this.prisma.fundCategoryBenchmark.findUnique({ where: { category } });
+      if (!benchmark) continue;
+
+      const benchmarkYield = new Decimal(benchmark.typicalDividendYieldPct.toString()).toNumber();
+      if (benchmarkYield < INCOME_ORIENTED_YIELD_THRESHOLD_PCT) continue; // not an income-oriented category -- skip
+
+      const currentValue = new Decimal(holding.asset.currentValue.toString()).toNumber();
+      if (currentValue <= 0) continue;
+
+      const trailingDividends = dividendsByTicker.get(holding.schemeCode) ?? 0;
+      const actualYieldPct = (trailingDividends / currentValue) * 100;
+      const gap = benchmarkYield - actualYieldPct;
+      if (gap < MIN_DIVIDEND_YIELD_GAP_PCT) continue;
+
+      out.push({
+        type: "DIVIDEND_OPPORTUNITY",
+        title: `${holding.fundName} is yielding below-typical income for its category`,
+        description: `${holding.fundName} (classified as ${category}) has a trailing dividend yield of ${actualYieldPct.toFixed(2)}% this financial year, below the typical ${benchmarkYield.toFixed(2)}% for income-oriented funds in this category. If you're holding this fund for income, it may be worth comparing against peers with a stronger distribution history.`,
+        dataPoint: {
+          holdingId: holding.id,
+          fundName: holding.fundName,
+          category,
+          actualYieldPct,
+          benchmarkYield,
+          trailingDividends,
+          financialYear,
+        },
+        dedupeKey: `dividend-opportunity:${holding.id}:${financialYear}`,
+      });
     }
     return out;
   }

@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException, ConflictException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { StorageService } from "../storage/storage.service";
+import { HouseholdAccessService } from "../household/household-access.service";
 import type { RequestVaultUploadDto, RegisterVaultDocumentDto, SetupVaultDto } from "@richer/shared-types";
 import type { VaultDocumentDto, VaultSaltResponse } from "@richer/shared-types";
 
@@ -21,6 +22,7 @@ export class VaultService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
+    private readonly householdAccess: HouseholdAccessService,
   ) {}
 
   async getSalt(userId: string): Promise<VaultSaltResponse> {
@@ -82,6 +84,15 @@ export class VaultService {
       const owned = await this.prisma.asset.findFirst({ where: { id: dto.linkedAssetId, userId, deletedAt: null } });
       if (!owned) throw new NotFoundException("Linked asset not found or not owned by this user.");
     }
+    if (dto.linkedHouseholdId) {
+      // Phase 21: a WILL_TRUST document links to a Household, not an Asset —
+      // any member may attach one (an OWNER isn't required, mirroring how
+      // linkedAssetId only checks ownership, not an edit-permission level).
+      const householdIds = await this.householdAccess.householdIdsFor(userId);
+      if (!householdIds.includes(dto.linkedHouseholdId)) {
+        throw new NotFoundException("Linked household not found or you are not a member.");
+      }
+    }
 
     const doc = await this.prisma.vaultDocument.create({
       data: {
@@ -94,6 +105,7 @@ export class VaultService {
         fileSizeBytes: dto.fileSizeBytes,
         iv: dto.iv,
         linkedAssetId: dto.linkedAssetId ?? null,
+        linkedHouseholdId: dto.linkedHouseholdId ?? null,
       },
     });
 
@@ -128,7 +140,8 @@ export class VaultService {
 
   private toDto(doc: {
     id: string; category: string; storagePath: string; encryptedFilename: string; encryptedFilenameIv: string;
-    mimeType: string; fileSizeBytes: number; iv: string; linkedAssetId: string | null; createdAt: Date;
+    mimeType: string; fileSizeBytes: number; iv: string; linkedAssetId: string | null;
+    linkedHouseholdId: string | null; createdAt: Date;
   }): VaultDocumentDto {
     return {
       id: doc.id,
@@ -138,6 +151,7 @@ export class VaultService {
       encryptedFilenameIv: doc.encryptedFilenameIv,
       mimeType: doc.mimeType,
       fileSizeBytes: doc.fileSizeBytes,
+      linkedHouseholdId: doc.linkedHouseholdId,
       iv: doc.iv,
       linkedAssetId: doc.linkedAssetId,
       createdAt: doc.createdAt.toISOString(),
