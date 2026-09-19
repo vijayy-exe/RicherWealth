@@ -18,7 +18,7 @@ describe("GoalsService", () => {
     asset: { findMany: jest.fn() },
   };
   const mockCurrency = { convert: jest.fn((amount: Decimal) => Promise.resolve(amount)) }; // identity conversion by default
-  const mockAnalytics = { getReturnSeriesStats: jest.fn() };
+  const mockAnalytics = { getPortfolioReturnAssumption: jest.fn() };
   const mockQuant = { monteCarlo: jest.fn() };
 
   let service: GoalsService;
@@ -26,6 +26,7 @@ describe("GoalsService", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockCurrency.convert.mockImplementation((amount: Decimal) => Promise.resolve(amount));
+    mockAnalytics.getPortfolioReturnAssumption.mockResolvedValue({ annualReturnPct: 8, annualVolatilityPct: 12, isAssumedReturn: true });
     service = new GoalsService(mockPrisma as never, mockCurrency as never, mockAnalytics as never, mockQuant as never);
   });
 
@@ -113,11 +114,16 @@ describe("GoalsService", () => {
     it("uses the linked assets' real return stats when available, and flags isAssumedReturn: false", async () => {
       mockPrisma.goal.findUnique.mockResolvedValue(baseGoal({ linkedAssetIds: ["asset-1"] }));
       mockPrisma.asset.findMany.mockResolvedValue([{ currentValue: new Decimal(100_000), currencyCode: "INR" }]);
-      mockAnalytics.getReturnSeriesStats.mockResolvedValue({ muDaily: 0.0004, sigmaDaily: 0.012, hasSufficientData: true });
+      mockAnalytics.getPortfolioReturnAssumption.mockResolvedValue({
+        annualReturnPct: 0.0004 * 252 * 100,
+        annualVolatilityPct: 0.012 * Math.sqrt(252) * 100,
+        isAssumedReturn: false,
+      });
       mockQuant.monteCarlo.mockResolvedValue({ probabilityOfTarget: 0.62 });
 
       const result = await service.getSuccessProbability("user-1", "goal-1");
       expect(result).toMatchObject({ isAssumedReturn: false, probabilityOfTarget: 0.62 });
+      expect(mockAnalytics.getPortfolioReturnAssumption).toHaveBeenCalledWith("user-1", ["asset-1"]);
       if (!("error" in result) && !result.isAssumedReturn) {
         expect(result.assumedAnnualReturnPct).toBeCloseTo(0.0004 * 252 * 100, 6);
         expect(result.assumedAnnualVolatilityPct).toBeCloseTo(0.012 * Math.sqrt(252) * 100, 6);
@@ -126,6 +132,7 @@ describe("GoalsService", () => {
 
     it("falls back to the documented assumed return when there's no linked-asset data, and flags isAssumedReturn: true", async () => {
       mockPrisma.goal.findUnique.mockResolvedValue(baseGoal({ linkedAssetIds: [] }));
+      mockAnalytics.getPortfolioReturnAssumption.mockResolvedValue({ annualReturnPct: 8, annualVolatilityPct: 12, isAssumedReturn: true });
       mockQuant.monteCarlo.mockResolvedValue({ probabilityOfTarget: 0.55 });
 
       const result = await service.getSuccessProbability("user-1", "goal-1");

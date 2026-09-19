@@ -13,8 +13,18 @@ import { Injectable } from "@nestjs/common";
  * no PDF template file needed to change.
  */
 export interface ExecutiveSummaryInput {
-  reportType: "net-worth-statement" | "portfolio-analytics" | "tax-report" | "financial-snapshot";
+  reportType: "net-worth-statement" | "portfolio-analytics" | "tax-report" | "financial-snapshot" | "health-audit";
   headlineFacts: Record<string, string | number>;
+  /**
+   * Phase 20 — Health Audit. When set, this call is generating one
+   * SECTION's summary within a larger multi-section report (rather than
+   * the whole report's single summary, the only mode the other 4 report
+   * types use) — the prompt scopes itself to just this section's facts, so
+   * a reader never mistakes a section paragraph for the whole report's
+   * narrative. Omitted (the default) for every other report type, whose
+   * prompt text is byte-for-byte unchanged by this field's existence.
+   */
+  sectionLabel?: string;
 }
 
 export interface ExecutiveSummaryProvider {
@@ -35,8 +45,9 @@ export class StubExecutiveSummaryProvider implements ExecutiveSummaryProvider {
     const facts = Object.entries(input.headlineFacts)
       .map(([k, v]) => `${k}: ${v}`)
       .join(", ");
+    const scope = input.sectionLabel ? `the "${input.sectionLabel}" section of this ${input.reportType.replace(/-/g, " ")}` : `this ${input.reportType.replace(/-/g, " ")}`;
     return Promise.resolve({
-      text: `An AI-written narrative summary could not be generated for this ${input.reportType.replace(/-/g, " ")} right now (the AI layer is unreachable). The key figures behind this report are: ${facts}.`,
+      text: `An AI-written narrative summary could not be generated for ${scope} right now (the AI layer is unreachable). The key figures are: ${facts}.`,
       isPlaceholder: true,
     });
   }

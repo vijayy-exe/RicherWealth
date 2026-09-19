@@ -7,6 +7,16 @@ import { RiskFreeRateService } from "./risk-free-rate.service";
 import { MarketDataService, type DailyReturn } from "./market-data.service";
 
 const MONTE_CARLO_TTL_S = 60 * 60 * 24; // recompute at most daily unless forced
+const TRADING_DAYS_PER_YEAR = 252;
+
+// Fallback assumption used ONLY when a portfolio (or a subset of it, e.g. a
+// goal's linked assets) has no assets, or those assets have insufficient
+// price history, to derive a real mu/sigma from — a moderate
+// balanced-portfolio assumption, always flagged `isAssumedReturn: true` in
+// the response so it's never silently mistaken for real data. Shared by
+// GoalsService (Phase 13) and the Phase 20 scenario simulator.
+export const ASSUMED_ANNUAL_RETURN_PCT = 8;
+export const ASSUMED_ANNUAL_VOLATILITY_PCT = 12;
 
 interface CacheAdapter {
   get(key: string): Promise<string | null>;
@@ -202,6 +212,36 @@ export class AnalyticsService implements OnModuleInit {
     if (portfolioReturns.length < 2) return { muDaily: 0, sigmaDaily: 0, hasSufficientData: false };
     const returnValues = portfolioReturns.map((r) => r.return);
     return { muDaily: mean(returnValues), sigmaDaily: stdDev(returnValues), hasSufficientData: true };
+  }
+
+  // ─── Portfolio return assumption (Phase 13 goals, Phase 20 scenario sim) ─
+
+  /**
+   * Real annualized mu/sigma derived from an asset subset's (or, if
+   * `assetIds` is omitted, the WHOLE portfolio's) historical daily returns
+   * (annualized via the standard sqrt(time) scaling), falling back to the
+   * documented ASSUMED_* constants — flagged `isAssumedReturn: true` — when
+   * `assetIds` is an empty array or there isn't enough price history.
+   * Originally lived only in GoalsService; promoted here so the Phase 20
+   * scenario simulator shares the exact same derivation instead of a second
+   * copy that could drift.
+   */
+  async getPortfolioReturnAssumption(
+    userId: string,
+    assetIds?: string[],
+  ): Promise<{ annualReturnPct: number; annualVolatilityPct: number; isAssumedReturn: boolean }> {
+    if (assetIds && assetIds.length === 0) {
+      return { annualReturnPct: ASSUMED_ANNUAL_RETURN_PCT, annualVolatilityPct: ASSUMED_ANNUAL_VOLATILITY_PCT, isAssumedReturn: true };
+    }
+    const stats = await this.getReturnSeriesStats(userId, assetIds);
+    if (stats.hasSufficientData) {
+      return {
+        annualReturnPct: stats.muDaily * TRADING_DAYS_PER_YEAR * 100,
+        annualVolatilityPct: stats.sigmaDaily * Math.sqrt(TRADING_DAYS_PER_YEAR) * 100,
+        isAssumedReturn: false,
+      };
+    }
+    return { annualReturnPct: ASSUMED_ANNUAL_RETURN_PCT, annualVolatilityPct: ASSUMED_ANNUAL_VOLATILITY_PCT, isAssumedReturn: true };
   }
 
   // ─── Internal data assembly ───────────────────────────────────────────────

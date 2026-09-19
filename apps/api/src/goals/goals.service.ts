@@ -13,14 +13,6 @@ export interface GoalWithProgress extends Goal {
   percentComplete: number;
 }
 
-// Fallback assumption used ONLY when a goal has no linked assets (or those
-// assets have insufficient price history) to derive a real mu/sigma from —
-// a moderate balanced-portfolio assumption, always flagged `isAssumedReturn:
-// true` in the response so it's never silently mistaken for real data.
-const ASSUMED_ANNUAL_RETURN_PCT = 8;
-const ASSUMED_ANNUAL_VOLATILITY_PCT = 12;
-const TRADING_DAYS_PER_YEAR = 252;
-
 export interface GoalSuccessProbability {
   monthsRemaining: number;
   requiredMonthlyContribution: number;
@@ -141,7 +133,7 @@ export class GoalsService {
       return { error: true, reason: "Target date must be in the future to compute a success probability" };
     }
 
-    const { annualReturnPct, annualVolatilityPct, isAssumedReturn } = await this.deriveReturnAssumption(userId, goal.linkedAssetIds);
+    const { annualReturnPct, annualVolatilityPct, isAssumedReturn } = await this.analytics.getPortfolioReturnAssumption(userId, goal.linkedAssetIds);
 
     const requiredMonthlyContribution = requiredSipForTarget(targetAmount, currentProgress, annualReturnPct, monthsRemaining) ?? 0;
     const contributionUsed = monthlyContributionOverride ?? requiredMonthlyContribution;
@@ -210,24 +202,5 @@ export class GoalsService {
     const months = (targetDate.getFullYear() - now.getFullYear()) * 12 + (targetDate.getMonth() - now.getMonth());
     // Round down a partial final month rather than up — never claims more time than truly remains.
     return targetDate.getDate() < now.getDate() ? months - 1 : months;
-  }
-
-  /**
-   * Real mu/sigma derived from the goal's own linked assets' historical
-   * daily returns (annualized via the standard sqrt(time) scaling) when
-   * available; otherwise the documented ASSUMED_* fallback, flagged.
-   */
-  private async deriveReturnAssumption(userId: string, linkedAssetIds: string[]): Promise<{ annualReturnPct: number; annualVolatilityPct: number; isAssumedReturn: boolean }> {
-    if (linkedAssetIds.length > 0) {
-      const stats = await this.analytics.getReturnSeriesStats(userId, linkedAssetIds);
-      if (stats.hasSufficientData) {
-        return {
-          annualReturnPct: stats.muDaily * TRADING_DAYS_PER_YEAR * 100,
-          annualVolatilityPct: stats.sigmaDaily * Math.sqrt(TRADING_DAYS_PER_YEAR) * 100,
-          isAssumedReturn: false,
-        };
-      }
-    }
-    return { annualReturnPct: ASSUMED_ANNUAL_RETURN_PCT, annualVolatilityPct: ASSUMED_ANNUAL_VOLATILITY_PCT, isAssumedReturn: true };
   }
 }

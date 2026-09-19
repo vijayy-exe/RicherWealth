@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException
 
 from analytics.allocation import full_allocation_report
 from analytics.correlation import correlation_matrix
-from analytics.monte_carlo import run_monte_carlo
+from analytics.monte_carlo import run_monte_carlo, run_monte_carlo_scenario
 from analytics.risk_metrics import (
     beta as compute_beta,
     jensen_alpha,
@@ -21,6 +21,7 @@ from schemas import (
     CorrelationRequest,
     MonteCarloRequest,
     RiskMetricsRequest,
+    ScenarioMonteCarloRequest,
 )
 
 router = APIRouter(prefix="/analytics", tags=["Analytics"])
@@ -81,6 +82,24 @@ async def monte_carlo(req: MonteCarloRequest):
             percentiles=tuple(req.percentiles),
             contribution_per_period=req.contributionPerPeriod,
             target_value=req.targetValue,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+@router.post("/monte-carlo-scenario")
+async def monte_carlo_scenario(req: ScenarioMonteCarloRequest):
+    """Phase 20 — Wealth Digital Twin. Same response shape as /monte-carlo
+    (via the same summarize_paths call), so the frontend's existing fan-
+    chart rendering works unchanged; the only difference is a chained list
+    of phases instead of one flat mu/sigma/periods run."""
+    try:
+        return run_monte_carlo_scenario(
+            initial_value=req.initialValue,
+            phases=[p.model_dump() for p in req.phases],
+            n_simulations=req.nSimulations,
+            seed=req.seed,
+            percentiles=tuple(req.percentiles),
         )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))

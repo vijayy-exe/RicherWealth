@@ -42,6 +42,10 @@ export class QuantClientService {
     return this.post("/analytics/monte-carlo", payload);
   }
 
+  async monteCarloScenario(payload: unknown): Promise<unknown> {
+    return this.post("/analytics/monte-carlo-scenario", payload);
+  }
+
   private async post(path: string, payload: unknown): Promise<unknown> {
     try {
       const res = await this.http.post(path, payload);

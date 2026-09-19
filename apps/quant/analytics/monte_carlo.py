@@ -78,6 +78,101 @@ def simulate_paths(
     return paths
 
 
+def simulate_phased_paths(
+    initial_value: float,
+    phases: list[dict],
+    n_simulations: int = 10_000,
+    seed: int | None = None,
+) -> np.ndarray:
+    """Phase 20 — Wealth Digital Twin / scenario simulator. Generalizes
+    `simulate_paths`'s existing per-period loop (see its own docstring —
+    that loop already exists for the contribution case) to chain an ordered
+    list of PHASES, each with its own `mu`/`sigma`/`contributionPerPeriod`
+    plus an optional one-time `shockMultiplier` (e.g. 0.7 for a market crash)
+    and/or `lumpSumDelta` (e.g. +inheritance, -home-purchase-down-payment)
+    applied instantaneously at the START of that phase, before its own GBM
+    steps run. This is what makes "market crash" vs "job loss" vs "early
+    retirement" all representable with the SAME engine instead of one-off
+    special cases: a one-time shock is `shockMultiplier`/`lumpSumDelta` on a
+    single-period phase; a sustained change (job loss, salary change,
+    inflation spike) is a multi-period phase with adjusted `mu`/
+    `contributionPerPeriod`; a life event with both (early retirement, home
+    purchase) is a lump-sum phase followed by a phase with different
+    ongoing parameters.
+
+    Deliberately NOT implemented as repeated calls to `simulate_paths` /
+    the existing `/analytics/monte-carlo` endpoint chained via percentile
+    handoff: that would collapse each phase's full distribution down to a
+    few percentile numbers before starting the next phase, losing genuine
+    per-path continuity (a path that got unlucky in phase 1 should stay the
+    SAME unlucky path in phase 2, not get reseeded from a population
+    average). This function instead carries one (n_simulations,) array of
+    current per-path values across every phase boundary, so path identity
+    is preserved throughout — the same fully-vectorized-per-step approach
+    `simulate_paths`'s contribution branch already uses, just chained.
+
+    Each `phases[i]` dict: `{periods: int, mu: float, sigma: float,
+    contributionPerPeriod: float = 0.0, shockMultiplier: float = 1.0,
+    lumpSumDelta: float = 0.0, dt: float = 1.0}`.
+
+    Returns an (n_simulations, total_columns) array. `total_columns` is 1
+    (the initial value) plus, per phase, `periods` GBM-step columns and
+    (only when that phase actually has a shock/lump-sum) one extra
+    instantaneous shock column — so a plain multi-phase chain with no shocks
+    produces exactly the same column count as calling `simulate_paths` once
+    with `sum(periods)`, and a shock phase's discontinuity is visible as its
+    own explicit point in the returned path (useful for a "before/after the
+    crash" chart marker), not silently absorbed into a GBM step.
+    """
+    if not phases:
+        raise ValueError("simulate_phased_paths: phases must be non-empty")
+    if initial_value <= 0:
+        raise ValueError("simulate_phased_paths: initial_value must be positive")
+
+    rng = np.random.default_rng(seed)
+    current = np.full(n_simulations, initial_value, dtype=float)
+    columns = [current.copy()]
+
+    for i, phase in enumerate(phases):
+        periods = phase["periods"]
+        if periods < 1:
+            raise ValueError(f"simulate_phased_paths: phases[{i}].periods must be >= 1")
+        mu = phase["mu"]
+        sigma = phase["sigma"]
+        dt = phase.get("dt", 1.0)
+        contribution = phase.get("contributionPerPeriod", 0.0)
+        shock = phase.get("shockMultiplier", 1.0)
+        lump_sum = phase.get("lumpSumDelta", 0.0)
+
+        if shock != 1.0 or lump_sum != 0.0:
+            current = np.maximum(current * shock + lump_sum, 0.0)  # a portfolio value can't go negative
+            columns.append(current.copy())
+
+        drift = (mu - 0.5 * sigma**2) * dt
+        vol = sigma * np.sqrt(dt)
+        for _ in range(periods):
+            z = rng.standard_normal(n_simulations)
+            current = np.maximum(current * np.exp(drift + vol * z) + contribution, 0.0)
+            columns.append(current.copy())
+
+    return np.stack(columns, axis=1)
+
+
+def run_monte_carlo_scenario(
+    initial_value: float,
+    phases: list[dict],
+    n_simulations: int = 10_000,
+    seed: int | None = None,
+    percentiles: tuple[float, ...] = (5, 25, 50, 75, 95),
+) -> dict:
+    """Phase 20 orchestration wrapper, mirroring `run_monte_carlo`'s shape
+    exactly (same `summarize_paths` call, same response shape) so the
+    NestJS/frontend side reuses its existing fan-chart rendering unchanged
+    for scenario results, not a second response format."""
+    paths = simulate_phased_paths(initial_value, phases, n_simulations, seed)
+    return summarize_paths(paths, percentiles)
+
+
 def probability_of_target(final_values: np.ndarray, target: float) -> float:
     """Fraction of simulated final values that meet or exceed `target` — a
     real Monte Carlo estimate of goal success probability, not a placeholder."""

@@ -277,4 +277,35 @@ describe("AnalyticsService orchestration", () => {
       expect(mockQuant.monteCarlo).toHaveBeenCalledTimes(2);
     });
   });
+
+  describe("getPortfolioReturnAssumption", () => {
+    it("skips the data query and returns the assumed fallback when assetIds is an empty array", async () => {
+      const result = await service.getPortfolioReturnAssumption("user1", []);
+      expect(result).toEqual({ annualReturnPct: 8, annualVolatilityPct: 12, isAssumedReturn: true });
+      expect(mockPrisma.asset.findMany).not.toHaveBeenCalled();
+    });
+
+    it("returns the assumed fallback, flagged, when there's not enough price history", async () => {
+      mockPrisma.asset.findMany.mockResolvedValue([]);
+      const result = await service.getPortfolioReturnAssumption("user1");
+      expect(result).toEqual({ annualReturnPct: 8, annualVolatilityPct: 12, isAssumedReturn: true });
+    });
+
+    it("derives real annualized mu/sigma from historical returns, flagged isAssumedReturn: false", async () => {
+      const returns = Array.from({ length: 40 }, (_, i) => ({ date: `d${i}`, return: 0.001 * (i % 3 === 0 ? -1 : 1) }));
+      mockPrisma.asset.findMany.mockResolvedValue([
+        asset({ stockHolding: { ticker: "AAPL", exchange: "NASDAQ" }, currentValue: { toString: () => "1000" } }),
+      ]);
+      mockMarketData.getStockReturns.mockResolvedValue(returns);
+
+      const result = await service.getPortfolioReturnAssumption("user1", ["a1"]);
+      expect(result.isAssumedReturn).toBe(false);
+      // Same annualization as getReturnSeriesStats's own daily mu/sigma * TRADING_DAYS_PER_YEAR — recomputed independently here rather than asserted against a hardcoded number, so this stays correct if the fixture's return series above changes.
+      const values = returns.map((r) => r.return);
+      const muDaily = values.reduce((s, v) => s + v, 0) / values.length;
+      const varDaily = values.reduce((s, v) => s + (v - muDaily) ** 2, 0) / (values.length - 1);
+      expect(result.annualReturnPct).toBeCloseTo(muDaily * 252 * 100, 6);
+      expect(result.annualVolatilityPct).toBeCloseTo(Math.sqrt(varDaily) * Math.sqrt(252) * 100, 6);
+    });
+  });
 });

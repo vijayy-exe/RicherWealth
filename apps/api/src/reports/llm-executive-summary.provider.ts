@@ -34,7 +34,10 @@ export class LlmExecutiveSummaryProvider implements ExecutiveSummaryProvider {
     const facts = Object.entries(input.headlineFacts)
       .map(([k, v]) => `${k}: ${v}`)
       .join(", ");
-    const prompt = `Write a short (2-3 sentence), factual, plain-English executive summary for a "${input.reportType.replace(/-/g, " ")}" financial report, using ONLY these real computed figures (do not invent, estimate, or round any number not present here):\n${facts}\n\nDo not add a greeting or sign-off, just the summary text.`;
+    const scope = input.sectionLabel
+      ? `the "${input.sectionLabel}" section of a "${input.reportType.replace(/-/g, " ")}" financial report`
+      : `a "${input.reportType.replace(/-/g, " ")}" financial report`;
+    const prompt = `Write a short (2-3 sentence), factual, plain-English executive summary for ${scope}, using ONLY these real computed figures (do not invent, estimate, or round any number not present here):\n${facts}\n\nDo not add a greeting or sign-off, just the summary text.`;
 
     try {
       const result = await this.orchestrator.complete([{ role: "user", content: prompt }]);

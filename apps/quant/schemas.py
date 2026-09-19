@@ -53,3 +53,33 @@ class MonteCarloRequest(BaseModel):
     # Phase 11 behavior (no contribution, no target) when omitted.
     contributionPerPeriod: float = Field(default=0.0, ge=0)
     targetValue: float | None = Field(default=None, gt=0)
+
+
+class ScenarioPhase(BaseModel):
+    """Phase 20 — one leg of a scenario simulation. See
+    `analytics/monte_carlo.py`'s `simulate_phased_paths` docstring for how
+    phases compose into "job loss", "market crash", etc."""
+
+    periods: int = Field(gt=0, le=10_000)
+    mu: float
+    sigma: float = Field(ge=0)
+    # Unlike MonteCarloRequest.contributionPerPeriod above, this MAY be
+    # negative -- a job-loss or early-retirement phase draws the corpus
+    # down rather than contributing to it.
+    contributionPerPeriod: float = Field(default=0.0)
+    # One-time multiplicative shock applied at the START of this phase
+    # (e.g. 0.7 for a -30% market crash). 1.0 = no shock.
+    shockMultiplier: float = Field(default=1.0, ge=0)
+    # One-time additive delta applied at the START of this phase, after the
+    # shock multiplier (e.g. +2_000_000 for an inheritance, -1_500_000 for a
+    # home-purchase down payment).
+    lumpSumDelta: float = Field(default=0.0)
+    dt: float = Field(default=1.0, gt=0)
+
+
+class ScenarioMonteCarloRequest(BaseModel):
+    initialValue: float = Field(gt=0)
+    phases: list[ScenarioPhase] = Field(min_length=1)
+    nSimulations: int = Field(default=10_000, gt=0, le=200_000)
+    seed: int | None = None
+    percentiles: list[float] = Field(default_factory=lambda: [5, 25, 50, 75, 95])

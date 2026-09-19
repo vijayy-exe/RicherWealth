@@ -1,4 +1,4 @@
-import { compoundGrowth, sipFutureValue, requiredSipForTarget, requiredLumpsumForTarget } from "./compound-growth";
+import { compoundGrowth, sipFutureValue, requiredSipForTarget, monthsToTarget, requiredLumpsumForTarget } from "./compound-growth";
 
 describe("compoundGrowth", () => {
   it("matches the textbook annual-compounding reference: 100000 @ 10% for 3 years = 133100", () => {
@@ -72,6 +72,44 @@ describe("requiredSipForTarget", () => {
   it("returns null for a non-positive time horizon", () => {
     expect(requiredSipForTarget(100_000, 0, 8, 0)).toBeNull();
     expect(requiredSipForTarget(100_000, 0, 8, -5)).toBeNull();
+  });
+});
+
+describe("monthsToTarget", () => {
+  it("matches target/contribution exactly at 0% interest", () => {
+    expect(monthsToTarget(120_000, 0, 0, 10_000)).toBe(12);
+  });
+
+  it("round-trips through sipFutureValue: contributing for the returned number of months hits (or just exceeds) the target", () => {
+    const months = monthsToTarget(500_000, 50_000, 11, 6_000) as number;
+    expect(months).not.toBeNull();
+    const projected = sipFutureValue({ monthlyContribution: 6_000, annualRatePct: 11, months });
+    const growthOfCurrent = 50_000 * Math.pow(1 + 0.11 / 12, months);
+    expect(projected.futureValue + growthOfCurrent).toBeGreaterThanOrEqual(500_000 - 1); // -1 to absorb ceil() rounding at the boundary
+  });
+
+  it("is the approximate inverse of requiredSipForTarget: the contribution requiredSipForTarget computes for N months, fed back through monthsToTarget, returns close to N", () => {
+    const months = 60;
+    const required = requiredSipForTarget(500_000, 50_000, 11, months) as number;
+    const roundTrippedMonths = monthsToTarget(500_000, 50_000, 11, required);
+    expect(roundTrippedMonths).not.toBeNull();
+    expect(roundTrippedMonths as number).toBeLessThanOrEqual(months);
+    expect(roundTrippedMonths as number).toBeGreaterThan(months - 2); // ceil() rounding only, never off by more than ~1 month
+  });
+
+  it("a larger monthly contribution reaches the same target in fewer (or equal) months", () => {
+    const monthsAtBaseline = monthsToTarget(500_000, 50_000, 11, 5_000) as number;
+    const monthsBoosted = monthsToTarget(500_000, 50_000, 11, 10_000) as number;
+    expect(monthsBoosted).toBeLessThan(monthsAtBaseline);
+  });
+
+  it("returns 0 when the current value alone already meets the target", () => {
+    expect(monthsToTarget(100_000, 200_000, 8, 5_000)).toBe(0);
+  });
+
+  it("returns null when the contribution is non-positive and the target isn't already met", () => {
+    expect(monthsToTarget(100_000, 0, 8, 0)).toBeNull();
+    expect(monthsToTarget(100_000, 0, 8, -500)).toBeNull();
   });
 });
 

@@ -137,6 +137,40 @@ export function requiredSipForTarget(targetAmount: number, currentValue: number,
 }
 
 /**
+ * Months needed to reach `targetAmount`, starting from `currentValue`
+ * already invested, contributing a FIXED `monthlyContribution` (annuity-due,
+ * same convention as `sipFutureValue`) at `annualRatePct` expected annual
+ * return — the algebraic inverse of `sipFutureValue` for `n` (months),
+ * solved in closed form (not a numeric/iterative solver) the same way
+ * `requiredSipForTarget` above is the closed-form inverse for `P`:
+ *
+ *   Let i = annualRatePct/100/12, k = monthlyContribution * (1+i) / i.
+ *   targetAmount = currentValue*(1+i)^n + monthlyContribution*((1+i)^n - 1)/i*(1+i)
+ *                = (1+i)^n * (currentValue + k) - k
+ *   =>  (1+i)^n = (targetAmount + k) / (currentValue + k)
+ *   =>  n = ln((targetAmount + k) / (currentValue + k)) / ln(1+i)
+ *
+ * Returns 0 if `currentValue` alone already meets or exceeds the target.
+ * Returns `null` if the target is unreachable even with the given
+ * contribution (only possible when `monthlyContribution <= 0` and
+ * `currentValue` alone falls short — contributing nothing can never close a
+ * gap) — the caller should treat `null` as "not achievable under these
+ * terms," never silently round it to some large finite number.
+ */
+export function monthsToTarget(targetAmount: number, currentValue: number, annualRatePct: number, monthlyContribution: number): number | null {
+  if (currentValue >= targetAmount) return 0;
+  if (monthlyContribution <= 0) return null; // no growth path can be guaranteed to ever close the gap without i > 0, and this function shouldn't assume a rate is enough on its own
+
+  const i = annualRatePct / 100 / 12;
+  if (i === 0) return Math.ceil((targetAmount - currentValue) / monthlyContribution);
+
+  const k = (monthlyContribution * (1 + i)) / i;
+  const ratio = (targetAmount + k) / (currentValue + k);
+  if (ratio <= 1) return 0; // guards a pathological negative-rate edge case
+  return Math.ceil(Math.log(ratio) / Math.log(1 + i));
+}
+
+/**
  * Required lumpsum today to reach `targetAmount` in `years` at
  * `annualRatePct`: the inverse of `compoundGrowth`'s FV formula,
  * PV = target / (1 + r)^t. Returns null if `years` <= 0.
