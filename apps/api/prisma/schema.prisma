@@ -186,6 +186,11 @@ model User {
   aiConversations       AiConversation[]
   aiReports             AiReport[]
   aiSuggestions         AiSuggestion[]
+  // Phase 20
+  wealthHealthSnapshots WealthHealthSnapshot[]
+  wealthDnaProfile      WealthDnaProfile?
+  // Phase 22
+  auditLogs AuditLog[]
 
   /// Phase 17 quiet hours — local "HH:mm" strings interpreted in
   /// notifyQuietHoursTimezone (IANA name). Only gates push/email delivery;
@@ -251,10 +256,18 @@ model Passkey {
 model Household {
   id        String   @id @default(cuid())
   name      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  /// Used only to price the household-aggregate net worth view — set from
+  /// the creating OWNER's own baseCurrency at creation time, editable later.
+  /// Individual member views keep using each User's own baseCurrency.
+  baseCurrency String   @default("USD")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  members HouseholdMember[]
+  members        HouseholdMember[]
+  // Phase 21 — assets/liabilities/vault docs owned by (not just linked to) this household
+  assets         Asset[]
+  liabilities    Liability[]
+  vaultDocuments VaultDocument[]
 
   @@map("households")
 }
@@ -288,7 +301,26 @@ model Asset {
   updatedAt    DateTime  @updatedAt
   deletedAt    DateTime?
 
+  // ─── Phase 21: Family Office & Estate Planning ───────────────────────────
+  /// Set => this asset is jointly owned by the household (e.g. a shared
+  /// bank account, the family home), not just its creator (`userId`, which
+  /// stays required as the recorded contact/creator either way). Null =>
+  /// a personal asset, visible only to its own userId in aggregate views.
+  /// See NetWorthService.calculateNetWorth/calculateHouseholdNetWorth for
+  /// how this prevents double-counting: a joint asset shows at FULL value
+  /// in every member's own dashboard, while the household aggregate sums
+  /// each unique asset exactly once (never sums members' individual totals).
+  householdId String?
+  /// Estate planning: who should receive/administer this asset. A single
+  /// operational nominee (e.g. the bank-nominee field on an account) —
+  /// distinct from EstateBeneficiary, which is a structured, possibly
+  /// multi-party inheritance/trust record used for planning, not banking.
+  nomineeName         String?
+  nomineeRelationship String?
+  nomineeContact      String?
+
   user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  household            Household?            @relation(fields: [householdId], references: [id], onDelete: SetNull)
   transactions         Transaction[]
   stockHolding         StockHolding?
   // Phase 5
@@ -307,10 +339,14 @@ model Asset {
   taxLots              TaxLot[]
   // Phase 16
   vaultDocuments       VaultDocument[]
+  // Phase 21
+  estateBeneficiaries  EstateBeneficiary[]
+  transferChecklist    AssetTransferChecklist?
 
   @@index([userId])
   @@index([userId, type])
   @@index([deletedAt])
+  @@index([householdId])
   @@map("assets")
 }
 
@@ -341,13 +377,18 @@ model Liability {
   createdAt         DateTime             @default(now())
   updatedAt         DateTime             @updatedAt
   deletedAt         DateTime?
+  /// Phase 21: household-owned liability (e.g. a joint mortgage) — same
+  /// full-value-per-member / dedup-once-at-aggregate rule as Asset.householdId.
+  householdId       String?
 
   user             User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  household        Household?         @relation(fields: [householdId], references: [id], onDelete: SetNull)
   transactions     Transaction[]
   linkedRealEstate RealEstateDetail[]
 
   @@index([userId])
   @@index([userId, type])
+  @@index([householdId])
   @@map("liabilities")
 }
 
@@ -1011,18 +1052,18 @@ enum IpoStatus {
 /// honest manual-entry feature, not a live sync, and the frontend widget
 /// must say so explicitly rather than implying live data.
 model IpoListing {
-  id             String    @id @default(cuid())
-  companyName    String
-  exchange       String // e.g. "NSE", "BSE", "NASDAQ", "NYSE"
-  expectedDate   DateTime? @db.Date
-  priceRangeMin  Decimal?  @db.Decimal(20, 2)
-  priceRangeMax  Decimal?  @db.Decimal(20, 2)
-  currency       String    @default("USD")
-  status         IpoStatus @default(UPCOMING)
-  notes          String?
+  id              String    @id @default(cuid())
+  companyName     String
+  exchange        String // e.g. "NSE", "BSE", "NASDAQ", "NYSE"
+  expectedDate    DateTime? @db.Date
+  priceRangeMin   Decimal?  @db.Decimal(20, 2)
+  priceRangeMax   Decimal?  @db.Decimal(20, 2)
+  currency        String    @default("USD")
+  status          IpoStatus @default(UPCOMING)
+  notes           String?
   createdByUserId String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   createdBy User? @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
 
@@ -1165,25 +1206,25 @@ enum ItrExtractionMethod {
 }
 
 model ItrDocument {
-  id                String              @id @default(cuid())
-  userId            String
-  assessmentYear    String // e.g. "2025-26" — the AY the ITR was filed for
-  storagePath       String // path within the private "tax-documents" Supabase Storage bucket
-  mimeType          String
-  originalFilename  String
-  extractionStatus  ItrExtractionStatus @default(PENDING)
-  extractionMethod  ItrExtractionMethod?
+  id               String               @id @default(cuid())
+  userId           String
+  assessmentYear   String // e.g. "2025-26" — the AY the ITR was filed for
+  storagePath      String // path within the private "tax-documents" Supabase Storage bucket
+  mimeType         String
+  originalFilename String
+  extractionStatus ItrExtractionStatus  @default(PENDING)
+  extractionMethod ItrExtractionMethod?
   /// 0-1 overall confidence (min of per-field confidences); per-field
   /// confidence/needsReview flags live inside parsedData itself.
-  confidenceScore   Decimal?            @db.Decimal(4, 3)
+  confidenceScore  Decimal?             @db.Decimal(4, 3)
   /// Staging area for extracted fields (ParsedItrData shape, shared-types).
   /// NEVER read by CapitalGainsService/DividendTaxService/TaxLotService —
   /// grep confirms no write path from here into any other financial table.
-  parsedData        Json                @default("{}")
-  errorMessage      String?
-  reviewedAt        DateTime?
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
+  parsedData       Json                 @default("{}")
+  errorMessage     String?
+  reviewedAt       DateTime?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -1213,6 +1254,9 @@ enum VaultDocumentCategory {
   PROPERTY_DOCUMENTS
   INVESTMENT_STATEMENTS
   TAX_RETURNS
+  /// Phase 21: wills/trust deeds — household-level, not asset-level, hence
+  /// linkedHouseholdId rather than linkedAssetId below.
+  WILL_TRUST
 }
 
 model VaultDocument {
@@ -1237,16 +1281,24 @@ model VaultDocument {
   fileSizeBytes Int
   /// AES-GCM nonce (base64) for the file CONTENT ciphertext stored in
   /// vault-documents at `storagePath`. Not secret — safe alongside ciphertext.
-  iv String
+  iv            String
 
   linkedAssetId String?
+  /// Phase 21: alternative target for WILL_TRUST docs — a will/trust deed
+  /// belongs to the household, not one Asset. Exactly one of
+  /// linkedAssetId/linkedHouseholdId is ever set in practice (enforced in
+  /// VaultService, not at the DB level — mirrors how ASSET_LINKABLE_VAULT_
+  /// CATEGORIES was already only a soft, service-level rule pre-Phase-21).
+  linkedHouseholdId String?
   createdAt     DateTime @default(now())
 
-  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  asset Asset? @relation(fields: [linkedAssetId], references: [id], onDelete: SetNull)
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  asset     Asset?     @relation(fields: [linkedAssetId], references: [id], onDelete: SetNull)
+  household Household? @relation(fields: [linkedHouseholdId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([userId, category])
+  @@index([linkedHouseholdId])
   @@map("vault_documents")
 }
 
@@ -1281,6 +1333,9 @@ enum NotificationType {
   STOCK_PRICE_ALERT
   CRYPTO_PRICE_ALERT
   PROPERTY_PRICE_CHANGE
+  /// Phase 20 — AI CFO: notification-delivered tier of SuggestionEngineService's
+  /// output (DEBT_COST_ALERT / RETIREMENT_ACCELERATION AiSuggestionTypes).
+  AI_INSIGHT
 }
 
 enum NotificationChannel {
@@ -1300,23 +1355,23 @@ enum NotificationChannel {
 /// guard) and a date string (yyyy-mm-dd) for alerts that can legitimately
 /// re-fire on a later day (market crash, an EMI still "approaching" tomorrow).
 model Notification {
-  id              String              @id @default(cuid())
-  userId          String
-  type            NotificationType
-  title           String
-  body            String
+  id             String           @id @default(cuid())
+  userId         String
+  type           NotificationType
+  title          String
+  body           String
   /// Structured context for the frontend (ticker, amount, delta%, etc.) —
   /// never raw enough to need i18n by itself; title/body are pre-rendered.
-  data            Json                @default("{}")
-  sourceEntityId  String
-  triggerBucket   String
+  data           Json             @default("{}")
+  sourceEntityId String
+  triggerBucket  String
   /// Per-channel attempt/outcome, e.g. {"IN_APP":"SENT","PUSH":"SKIPPED_BY_PREFERENCE","EMAIL":"SKIPPED_NO_CREDENTIALS"}.
   /// This is the evidence the "disabling one channel only suppresses that
   /// channel" acceptance criterion is tested against.
-  deliveryResult  Json                @default("{}")
-  read            Boolean             @default(false)
-  readAt          DateTime?
-  createdAt       DateTime            @default(now())
+  deliveryResult Json             @default("{}")
+  read           Boolean          @default(false)
+  readAt         DateTime?
+  createdAt      DateTime         @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -1379,7 +1434,7 @@ enum AiSourceType {
 /// read via raw SQL ($queryRaw/$executeRaw) in EmbeddingRepository, never
 /// through the generated client's normal find/create methods.
 model PortfolioEmbedding {
-  id         String       @id @default(cuid())
+  id         String                      @id @default(cuid())
   userId     String
   sourceType AiSourceType
   sourceId   String
@@ -1387,8 +1442,8 @@ model PortfolioEmbedding {
   /// the vector so retrieval can return real quoted text, not just an id.
   content    String
   embedding  Unsupported("vector(768)")?
-  updatedAt  DateTime     @updatedAt
-  createdAt  DateTime     @default(now())
+  updatedAt  DateTime                    @updatedAt
+  createdAt  DateTime                    @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -1398,11 +1453,11 @@ model PortfolioEmbedding {
 }
 
 model AiConversation {
-  id        String      @id @default(cuid())
+  id        String   @id @default(cuid())
   userId    String
-  title     String      @default("New chat")
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
+  title     String   @default("New chat")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   user     User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   messages AiMessage[]
@@ -1417,17 +1472,17 @@ enum AiMessageRole {
 }
 
 model AiMessage {
-  id             String         @id @default(cuid())
+  id             String        @id @default(cuid())
   conversationId String
   role           AiMessageRole
   content        String
   /// Which indexed rows (if any) were retrieved and fed to the LLM as
   /// grounding context for this answer — the citation trail, not a guess.
-  ragSources     Json           @default("[]")
+  ragSources     Json          @default("[]")
   /// Honest record of which model actually produced this — e.g.
   /// "claude-sonnet-5" or "ollama:gemma4" (fallback) — never hidden.
   modelUsed      String?
-  createdAt      DateTime       @default(now())
+  createdAt      DateTime      @default(now())
 
   conversation AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
@@ -1471,6 +1526,13 @@ enum AiSuggestionType {
   REBALANCE
   TAX_HARVEST
   INCREASE_SIP
+  /// Phase 20 — AI CFO tier (also delivered as a Notification, see
+  /// SuggestionEngineService's CFO_TIER_TYPES).
+  DEBT_COST_ALERT
+  RETIREMENT_ACCELERATION
+  /// Phase 20 — Opportunity Scanner.
+  LOW_FEE_ALTERNATIVE
+  DIVIDEND_OPPORTUNITY
 }
 
 enum AiSuggestionStatus {
@@ -1503,4 +1565,133 @@ model AiSuggestion {
   @@unique([userId, dedupeKey])
   @@index([userId, status])
   @@map("ai_suggestions")
+}
+
+/// Phase 20 — Wealth Health Score. Mirrors RiskScoreSnapshot exactly (same
+/// shape, same daily-snapshot convention) except the scale orientation is
+/// inverted: 100 = HEALTHIEST here, vs. RiskScoreSnapshot's 100 = riskiest.
+/// See WEALTH_HEALTH_METHODOLOGY.md for the full formula.
+model WealthHealthSnapshot {
+  id           String   @id @default(cuid())
+  userId       String
+  overallScore Float
+  subScores    Json
+  snapshotDate DateTime @db.Date
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, snapshotDate])
+  @@index([userId, snapshotDate])
+  @@map("wealth_health_snapshots")
+}
+
+/// Phase 20 — Wealth DNA classifier. One CURRENT archetype per user
+/// (upserted on recompute, not a history) — a daily-snapshot trend would
+/// mirror WealthHealthSnapshot but is out of scope for this pass (see
+/// WEALTH_HEALTH_METHODOLOGY.md's "Wealth DNA" section). `signals` records
+/// the exact real inputs the rules-based classifier used, so the archetype
+/// is explainable, not a black box -- same discipline as AiSuggestion.dataPoint.
+model WealthDnaProfile {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  archetype      String
+  signals        Json
+  narrative      String
+  isLLMGenerated Boolean  @default(false)
+  computedAt     DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("wealth_dna_profiles")
+}
+
+/// Phase 20 — Opportunity Scanner reference data. A small, manually-curated
+/// table (same honest precedent as Phase 14's IpoListing: no live fund-
+/// screener API exists anywhere in this codebase, so this is explicitly NOT
+/// presented as a live feed anywhere it's surfaced) giving SuggestionEngineService
+/// a real, if approximate, "typical for this category" comparison point for
+/// expense-ratio and dividend-yield checks. Not user-scoped -- shared reference data.
+model FundCategoryBenchmark {
+  id                      String   @id @default(cuid())
+  category                String   @unique
+  typicalExpenseRatioPct  Decimal  @db.Decimal(6, 4)
+  typicalDividendYieldPct Decimal  @db.Decimal(6, 4)
+  exampleLowCostTicker    String?
+  updatedAt               DateTime @updatedAt
+
+  @@map("fund_category_benchmarks")
+}
+
+// ─── Phase 21: Family Office & Estate Planning ─────────────────────────────
+
+/// Structured inheritance/trust record — "who is meant to receive what" for
+/// a major asset, distinct from Asset.nomineeName (the single operational
+/// nominee an institution has on file). Multiple beneficiaries per asset are
+/// allowed; allocationPercent per asset is validated to sum to <= 100 in
+/// EstateBeneficiaryService, not at the DB level (same pattern as every
+/// other cross-row business rule in this codebase — e.g. TaxLot FIFO
+/// consumption is a service-layer invariant too).
+model EstateBeneficiary {
+  id                String   @id @default(cuid())
+  assetId           String
+  beneficiaryName   String
+  relationship      String
+  allocationPercent Decimal  @db.Decimal(5, 2)
+  /// Names the trust holding/distributing this share, if any — this is
+  /// where "family trust tracking" lives; most rows will leave this null
+  /// (a direct beneficiary designation, no trust involved).
+  trustName         String?
+  notes             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([assetId])
+  @@map("estate_beneficiaries")
+}
+
+/// Simple asset-transfer checklist workflow — one row per asset, auto-seeded
+/// with a standard step list the first time it's requested. `steps` is a
+/// JSON array of {id, label, completed, completedAt, note} rather than a
+/// child table: steps are a small, fixed-shape, always-loaded-together list
+/// with no independent query need, so a child table would only add joins
+/// with no benefit (same reasoning as User.trackingPreferences' Json array).
+model AssetTransferChecklist {
+  id        String   @id @default(cuid())
+  assetId   String   @unique
+  steps     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@map("asset_transfer_checklists")
+}
+
+// ─── Phase 22: Security & QA Pass — Audit Logging ──────────────────────────
+
+/// Immutable audit trail for every read/write to sensitive data (vault
+/// documents, bank sync, estate/nominee/household-membership changes).
+/// "Immutable" is enforced two ways: (1) the app layer never exposes an
+/// update/delete route for this table — AuditService only ever INSERTs —
+/// and (2) migration `phase22_audit_log` adds a Postgres BEFORE UPDATE/
+/// DELETE trigger that raises on this table, so it's a real DB-level
+/// guarantee, not just an app convention that a future bug could violate.
+model AuditLog {
+  id           String   @id @default(cuid())
+  actorId      String
+  action       String
+  resourceType String
+  resourceId   String?
+  metadata     Json     @default("{}")
+  ipAddress    String?
+  createdAt    DateTime @default(now())
+
+  actor User @relation(fields: [actorId], references: [id])
+
+  @@index([actorId])
+  @@index([resourceType, resourceId])
+  @@index([createdAt])
+  @@map("audit_logs")
 }

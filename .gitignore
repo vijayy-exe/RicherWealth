@@ -16,9 +16,6 @@ build/
 .env.local
 .env.*.local
 
-# Prisma
-apps/api/prisma/migrations/
-
 # Python
 __pycache__/
 *.py[cod]
