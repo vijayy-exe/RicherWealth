@@ -294,6 +294,7 @@ export default function AssetsPage() {
   const handleSave = async (data: {
     name: string; type: string; currentValue: number;
     currencyCode: string; notes?: string | undefined; details: Record<string, unknown>;
+    householdId?: string | null | undefined; nomineeName?: string | undefined; nomineeRelationship?: string | undefined; nomineeContact?: string | undefined;
   }) => {
     await createAsset.mutateAsync({
       name: data.name,
@@ -302,6 +303,10 @@ export default function AssetsPage() {
       currencyCode: data.currencyCode,
       notes: data.notes ?? null,
       details: data.details,
+      householdId: data.householdId ?? null,
+      nomineeName: data.nomineeName ?? null,
+      nomineeRelationship: data.nomineeRelationship ?? null,
+      nomineeContact: data.nomineeContact ?? null,
     });
     setModalState("closed");
     setSelectedType(null);
@@ -330,6 +335,7 @@ export default function AssetsPage() {
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <ExportButton dataset="assets" />
           <button
+            data-testid="add-asset-button"
             onClick={() => setModalState("type-select")}
             style={{
               padding: "0.75rem 1.5rem",

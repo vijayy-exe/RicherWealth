@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { FileText, TrendingUp, Landmark, Sparkles, Download, Bot } from "lucide-react";
+import { FileText, TrendingUp, Landmark, Sparkles, Download, Bot, HeartPulse } from "lucide-react";
 import { downloadReport, type ReportType } from "@/hooks/useReports";
 import { useLatestAiReport, useGenerateAiReport, type AiReportType } from "@/hooks/useAiReports";
 
@@ -11,6 +11,7 @@ const REPORTS: Array<{ type: ReportType; label: string; description: string; ico
   { type: "portfolio-analytics", label: "Portfolio Analytics Summary", description: "Diversification score, Sharpe/Sortino, beta, volatility, and drawdown.", icon: <Sparkles size={20} /> },
   { type: "tax-report", label: "Tax Report", description: "Capital gains, dividend income, and estimated tax for a financial year.", icon: <Landmark size={20} /> },
   { type: "financial-snapshot", label: "Financial Snapshot", description: "A one-page composite of net worth, top holdings, and portfolio health.", icon: <FileText size={20} /> },
+  { type: "health-audit", label: "Financial Health Audit", description: "A full audit: net worth, risk, Wealth Health Score, Wealth DNA, tax, goals, opportunities, scenarios, and history — every module in one report.", icon: <HeartPulse size={20} /> },
 ];
 
 const AI_REPORT_TYPES: Array<{ type: AiReportType; label: string }> = [
@@ -143,6 +144,7 @@ export default function ReportsPage() {
             </div>
             <p style={{ fontSize: "0.8125rem", color: "var(--color-text-secondary)", flex: 1 }}>{report.description}</p>
             <button
+              data-testid={`download-report-${report.type}`}
               onClick={() => void handleDownload(report.type)}
               disabled={downloading !== null}
               style={{

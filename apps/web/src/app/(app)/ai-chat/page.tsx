@@ -302,6 +302,7 @@ export default function AiChatPage() {
         <div style={{ display: "flex", gap: 10, padding: 12, borderTop: "1px solid var(--color-border-subtle)" }}>
           <input
             type="text"
+            data-testid="ai-chat-input"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
@@ -320,6 +321,7 @@ export default function AiChatPage() {
           />
           <button
             type="button"
+            data-testid="ai-chat-send"
             onClick={() => void handleSend()}
             disabled={isStreaming || !input.trim()}
             style={{

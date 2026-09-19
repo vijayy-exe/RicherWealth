@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, type Control, type UseFormRegister } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { motion, AnimatePresence } from "framer-motion";
@@ -13,6 +13,8 @@ import { Gem } from "lucide-react";
 import { FileUploadZone } from "./FileUploadZone";
 import type { UploadedDocument } from "@/hooks/useFileUpload";
 import type { AssetType } from "@richer/shared-types";
+import { useMyHouseholds } from "@/hooks/useHousehold";
+import { Users } from "lucide-react";
 
 // ─── Shared base schema ───────────────────────────────────────────────────────
 const BaseSchema = z.object({
@@ -21,6 +23,12 @@ const BaseSchema = z.object({
   currencyCode: z.string().min(1),
   notes: z.string().max(2000).optional(),
   details: z.record(z.unknown()).default({}),
+  // Phase 21: Family Office & Estate Planning — all optional, so every
+  // existing asset type's flow is unaffected unless the user opts in.
+  householdId: z.string().nullable().optional(),
+  nomineeName: z.string().max(200).optional(),
+  nomineeRelationship: z.string().max(100).optional(),
+  nomineeContact: z.string().max(200).optional(),
 });
 
 type BaseFormValues = z.infer<typeof BaseSchema>;
@@ -487,7 +495,7 @@ function DetailFields({ type, register, errors }: DetailProps & { type: AssetTyp
 
 // ─── Step indicator ───────────────────────────────────────────────────────────
 
-const STEPS = ["Basics", "Details", "Notes", "Documents"];
+const STEPS = ["Basics", "Details", "Notes & Estate", "Documents"];
 
 function StepIndicator({ current, total }: { current: number; total: number }) {
   return (
@@ -505,6 +513,60 @@ function StepIndicator({ current, total }: { current: number; total: number }) {
       <span style={{ marginLeft: 8, fontSize: "0.75rem", color: "var(--color-text-muted)" }}>
         Step {current + 1} of {total} — {STEPS[current]}
       </span>
+    </div>
+  );
+}
+
+// ─── Phase 21: Estate & Nominee fields (shown on every asset type) ───────────
+
+function EstateAndNomineeFields({
+  control,
+  register,
+}: {
+  control: Control<Record<string, unknown>>;
+  register: UseFormRegister<Record<string, unknown>>;
+}) {
+  const { data: households } = useMyHouseholds();
+
+  return (
+    <div style={{
+      display: "flex", flexDirection: "column", gap: 16, marginTop: 8, paddingTop: 16,
+      borderTop: "1px solid var(--color-border-glass)",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--color-text-secondary)" }}>
+        <Users size={15} />
+        <span style={{ fontWeight: 700, fontSize: "0.8125rem" }}>Estate & Family Office</span>
+      </div>
+
+      {households && households.length > 0 && (
+        <FormField label="Ownership" hint="Mark as jointly owned by a household — shows at full value in every member's dashboard, counted once in the household total">
+          <Controller
+            name="householdId"
+            control={control}
+            defaultValue={null}
+            render={({ field }) => (
+              <SelectField
+                value={(field.value as string | null) ?? ""}
+                onChange={(v) => field.onChange(v || null)}
+                placeholder="Personal (just me)"
+                options={households.map((h) => ({ value: h.id, label: `Joint — ${h.name}` }))}
+              />
+            )}
+          />
+        </FormField>
+      )}
+
+      <div style={fieldGrid}>
+        <FormField label="Nominee Name" hint="Who should receive/administer this asset">
+          <TextInput {...register("nomineeName")} placeholder="e.g. Jane Doe" />
+        </FormField>
+        <FormField label="Relationship">
+          <TextInput {...register("nomineeRelationship")} placeholder="e.g. Spouse" />
+        </FormField>
+        <FormField label="Nominee Contact">
+          <TextInput {...register("nomineeContact")} placeholder="Phone or email" />
+        </FormField>
+      </div>
     </div>
   );
 }
@@ -527,6 +589,10 @@ interface AssetFormProps {
     currencyCode: string;
     notes?: string | undefined;
     details: Record<string, unknown>;
+    householdId?: string | null | undefined;
+    nomineeName?: string | undefined;
+    nomineeRelationship?: string | undefined;
+    nomineeContact?: string | undefined;
   }) => void;
   onBack?: () => void;
   isLoading?: boolean;
@@ -549,7 +615,7 @@ export function AssetForm({ type, defaultValues, onSuccess, onBack, isLoading }:
   });
 
   const onSubmit = (data: Record<string, unknown>) => {
-    const { name, currentValue, currencyCode, notes, details: _d, ...rest } = data;
+    const { name, currentValue, currencyCode, notes, details: _d, householdId, nomineeName, nomineeRelationship, nomineeContact, ...rest } = data;
     const details: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(rest)) details[k] = v;
 
@@ -564,6 +630,10 @@ export function AssetForm({ type, defaultValues, onSuccess, onBack, isLoading }:
       currencyCode: isForex ? (details["fromCurrency"] as string) : (currencyCode as string),
       notes: (notes as string | undefined) ?? undefined,
       details,
+      householdId: (householdId as string | null | undefined) || null,
+      nomineeName: (nomineeName as string | undefined) || undefined,
+      nomineeRelationship: (nomineeRelationship as string | undefined) || undefined,
+      nomineeContact: (nomineeContact as string | undefined) || undefined,
     });
   };
 
@@ -668,11 +738,14 @@ export function AssetForm({ type, defaultValues, onSuccess, onBack, isLoading }:
             />
           )}
 
-          {/* Step 2: Notes */}
+          {/* Step 2: Notes & Estate planning */}
           {step === 2 && (
-            <FormField label="Notes" hint="Any additional context (optional)">
-              <TextArea {...register("notes")} placeholder="e.g. Purchased as part of tax-saving strategy..." rows={4} />
-            </FormField>
+            <>
+              <FormField label="Notes" hint="Any additional context (optional)">
+                <TextArea {...register("notes")} placeholder="e.g. Purchased as part of tax-saving strategy..." rows={4} />
+              </FormField>
+              <EstateAndNomineeFields control={control} register={register} />
+            </>
           )}
 
           {/* Step 3: Documents */}

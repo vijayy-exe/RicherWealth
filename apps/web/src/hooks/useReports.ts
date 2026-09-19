@@ -26,7 +26,7 @@ async function downloadFile(path: string, filename: string): Promise<void> {
   URL.revokeObjectURL(url);
 }
 
-export type ReportType = "net-worth-statement" | "portfolio-analytics" | "tax-report" | "financial-snapshot";
+export type ReportType = "net-worth-statement" | "portfolio-analytics" | "tax-report" | "financial-snapshot" | "health-audit";
 
 export async function downloadReport(type: ReportType, params?: Record<string, string>): Promise<void> {
   const query = params ? `?${new URLSearchParams(params).toString()}` : "";

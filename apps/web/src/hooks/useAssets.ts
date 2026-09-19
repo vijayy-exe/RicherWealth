@@ -17,6 +17,11 @@ export interface AssetRow {
   createdAt: string;
   updatedAt: string;
   deletedAt?: string | null;
+  // Phase 21: Family Office & Estate Planning
+  householdId?: string | null;
+  nomineeName?: string | null;
+  nomineeRelationship?: string | null;
+  nomineeContact?: string | null;
 }
 
 async function getToken(): Promise<string> {

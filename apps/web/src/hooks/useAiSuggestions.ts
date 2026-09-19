@@ -23,7 +23,18 @@ async function authedFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-export type AiSuggestionType = "SELL" | "BUY" | "REBALANCE" | "TAX_HARVEST" | "INCREASE_SIP";
+export type AiSuggestionType =
+  | "SELL"
+  | "BUY"
+  | "REBALANCE"
+  | "TAX_HARVEST"
+  | "INCREASE_SIP"
+  // Phase 20 — AI CFO (notification-delivered)
+  | "DEBT_COST_ALERT"
+  | "RETIREMENT_ACCELERATION"
+  // Phase 20 — Opportunity Scanner
+  | "LOW_FEE_ALTERNATIVE"
+  | "DIVIDEND_OPPORTUNITY";
 export type AiSuggestionStatus = "ACTIVE" | "DISMISSED" | "ACTED_ON";
 
 export interface AiSuggestionRow {

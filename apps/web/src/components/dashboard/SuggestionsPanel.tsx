@@ -17,6 +17,10 @@ const TYPE_LABEL: Record<AiSuggestionType, string> = {
   REBALANCE: "Rebalance",
   TAX_HARVEST: "Tax Harvest",
   INCREASE_SIP: "Increase SIP",
+  DEBT_COST_ALERT: "Debt Cost Alert",
+  RETIREMENT_ACCELERATION: "Retirement Boost",
+  LOW_FEE_ALTERNATIVE: "Low-Fee Alternative",
+  DIVIDEND_OPPORTUNITY: "Dividend Opportunity",
 };
 
 const TYPE_TONE: Record<AiSuggestionType, string> = {
@@ -25,6 +29,10 @@ const TYPE_TONE: Record<AiSuggestionType, string> = {
   REBALANCE: "var(--color-warning)",
   TAX_HARVEST: "var(--color-info)",
   INCREASE_SIP: "var(--color-accent)",
+  DEBT_COST_ALERT: "var(--color-loss)",
+  RETIREMENT_ACCELERATION: "var(--color-accent)",
+  LOW_FEE_ALTERNATIVE: "var(--color-info)",
+  DIVIDEND_OPPORTUNITY: "var(--color-info)",
 };
 
 function SuggestionCard({ suggestion }: { suggestion: AiSuggestionRow }) {

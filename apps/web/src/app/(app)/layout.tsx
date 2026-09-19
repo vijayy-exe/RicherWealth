@@ -28,9 +28,15 @@ import {
   Settings as SettingsIcon,
   ChevronDown,
   Sparkles,
+  Wand2,
+  HeartPulse,
+  History,
+  Users,
+  ClipboardCheck,
   type LucideIcon,
 } from "lucide-react";
 import { NotificationBell } from "@/components/notifications/NotificationBell";
+import { HouseholdSwitcher } from "@/components/household/HouseholdSwitcher";
 
 interface NavItem {
   href: string;
@@ -92,6 +98,17 @@ const NAV: NavEntry[] = [
       { href: "/calculators", label: "Calculators", icon: Calculator },
       { href: "/tax", label: "Tax Center", icon: Landmark },
       { href: "/vault", label: "Vault", icon: Lock },
+      { href: "/household", label: "Family Office", icon: Users },
+      { href: "/estate-planning", label: "Estate Planning", icon: ClipboardCheck },
+    ],
+  },
+  {
+    label: "Wealth Intelligence",
+    icon: Wand2,
+    items: [
+      { href: "/wealth/digital-twin", label: "Digital Twin", icon: Wand2 },
+      { href: "/wealth/health-score", label: "Health Score & DNA", icon: HeartPulse },
+      { href: "/wealth/time-machine", label: "Time Machine", icon: History },
     ],
   },
   { label: "Settings", href: "/settings", icon: SettingsIcon },
@@ -300,6 +317,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           )}
         </nav>
 
+        <HouseholdSwitcher />
         <NotificationBell />
       </header>
 

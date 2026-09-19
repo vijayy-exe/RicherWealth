@@ -20,13 +20,22 @@ export function MonteCarloFanChart({
   onYearsChange,
   onRefresh,
   refreshing,
+  periodUnit = "days",
 }: {
   result: MonteCarloResult;
   years: number;
   onYearsChange: (y: number) => void;
   onRefresh: () => void;
   refreshing: boolean;
+  /** What one `result.periods` step represents — Phase 11's own Monte Carlo
+   * (the only caller until Phase 20) always projects in trading days
+   * (252/year); Phase 20's Wealth Digital Twin / Time Machine projects in
+   * MONTHS (12/year) instead. Governs the x-axis year-label conversion so
+   * the axis doesn't mislabel one for the other. */
+  periodUnit?: "days" | "months";
 }) {
+  const periodsPerYear = periodUnit === "months" ? 12 : 252;
+  const tickEvery = periodUnit === "months" ? 12 : 63; // yearly ticks for months, quarterly for days (day charts run much longer)
   const days = Array.from({ length: result.periods + 1 }, (_, i) => i);
   const p5 = result.percentiles["5"] ?? [];
   const p25 = result.percentiles["25"] ?? [];
@@ -53,7 +62,7 @@ export function MonteCarloFanChart({
         const arr = params as unknown as Array<{ dataIndex: number }>;
         const i = arr[0]?.dataIndex ?? 0;
         return [
-          `Day ${days[i]}`,
+          `${periodUnit === "months" ? "Month" : "Day"} ${days[i]}`,
           `95th: ${formatCurrency(p95[i] ?? 0)}`,
           `75th: ${formatCurrency(p75[i] ?? 0)}`,
           `Median: ${formatCurrency(p50[i] ?? 0)}`,
@@ -64,8 +73,8 @@ export function MonteCarloFanChart({
     },
     xAxis: {
       type: "category",
-      data: days.map((d) => (d % 63 === 0 ? `${(d / 252).toFixed(1)}y` : "")),
-      axisLabel: { color: "#8891A8", fontSize: 11, interval: 62 },
+      data: days.map((d) => (d % tickEvery === 0 ? `${(d / periodsPerYear).toFixed(1)}y` : "")),
+      axisLabel: { color: "#8891A8", fontSize: 11, interval: tickEvery - 1 },
       axisLine: { lineStyle: { color: "rgba(255,255,255,0.1)" } },
       splitLine: { show: false },
     },
