@@ -8,6 +8,7 @@ export const VAULT_DOCUMENT_CATEGORIES = [
   "PROPERTY_DOCUMENTS",
   "INVESTMENT_STATEMENTS",
   "TAX_RETURNS",
+  "WILL_TRUST",
 ] as const;
 
 export type VaultDocumentCategory = (typeof VAULT_DOCUMENT_CATEGORIES)[number];
@@ -44,6 +45,9 @@ export const VAULT_CATEGORY_LABELS: Record<VaultDocumentCategory, string> = {
   PROPERTY_DOCUMENTS: "Property Documents",
   INVESTMENT_STATEMENTS: "Investment Statements",
   TAX_RETURNS: "Tax Returns",
+  // Phase 21: wills/trust deeds link to a Household (linkedHouseholdId),
+  // not an Asset — see linkedAssetId's doc comment above.
+  WILL_TRUST: "Will / Trust Documents",
 };
 
 export interface VaultDocumentDto {
@@ -56,6 +60,7 @@ export interface VaultDocumentDto {
   fileSizeBytes: number;
   iv: string; // base64 — the file content's own AES-GCM nonce
   linkedAssetId: string | null;
+  linkedHouseholdId: string | null;
   createdAt: string;
 }
 
@@ -86,5 +91,6 @@ export const registerVaultDocumentSchema = z.object({
   fileSizeBytes: z.number().int().positive(),
   iv: z.string().min(1),
   linkedAssetId: z.string().nullable().optional(),
+  linkedHouseholdId: z.string().nullable().optional(),
 });
 export type RegisterVaultDocumentDto = z.infer<typeof registerVaultDocumentSchema>;

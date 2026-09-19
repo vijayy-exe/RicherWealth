@@ -54,3 +54,8 @@ export * from "./tax-config/schema";
 // the server only ever stores/serves ciphertext + metadata.
 export * from "./vault/crypto";
 export * from "./vault/types";
+// Phase 21 — Family Office mode & Estate Planning: household RBAC/DTOs and
+// nominee/beneficiary/transfer-checklist schemas shared between apps/api's
+// household+estate-planning modules and apps/web's forms.
+export * from "./household/schema";
+export * from "./estate-planning/schema";
