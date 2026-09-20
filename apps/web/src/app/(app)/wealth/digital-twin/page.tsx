@@ -3,12 +3,18 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { useSimulateScenario, type SimulateScenarioInput } from "@/hooks/useWealth";
+import { useDashboard } from "@/hooks/useDashboard";
 import { ScenarioPicker } from "@/components/wealth/ScenarioPicker";
 import { ScenarioComparisonChart } from "@/components/wealth/ScenarioComparisonChart";
 
 export default function DigitalTwinPage() {
   const [input, setInput] = useState<SimulateScenarioInput>({ scenarioType: "MARKET_CRASH", horizonYears: 10, monthlyContribution: 0 });
   const simulate = useSimulateScenario();
+  const dashboard = useDashboard();
+  // Fix Audit B-01 verification step explicitly calls out Digital Twin --
+  // ScenarioComparisonChart previously hardcoded ₹ unconditionally, same
+  // bug as MonteCarloFanChart.
+  const currency = dashboard.data?.baseCurrency ?? "INR";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
@@ -34,7 +40,7 @@ export default function DigitalTwinPage() {
             <p style={{ fontSize: "0.8125rem", color: "var(--color-text-muted)", marginTop: "0.25rem" }}>{(simulate.error as Error).message}</p>
           </div>
         ) : simulate.data ? (
-          <ScenarioComparisonChart result={simulate.data} />
+          <ScenarioComparisonChart result={simulate.data} currency={currency} />
         ) : (
           <div className="glass-card" style={{ padding: "2.5rem", textAlign: "center" }}>
             <p style={{ fontSize: "1rem", fontWeight: 600, color: "var(--color-text-primary)", marginBottom: "0.5rem" }}>

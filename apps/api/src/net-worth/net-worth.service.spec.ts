@@ -9,6 +9,7 @@ import { EventEmitter2 } from "@nestjs/event-emitter";
 import { NetWorthService } from "./net-worth.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { CurrencyService } from "../forex/currency.service";
+import { TransactionsService } from "../transactions/transactions.service";
 import Decimal from "decimal.js";
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────
@@ -36,6 +37,9 @@ const mockCurrency = {
 };
 
 const mockEvents = { emit: jest.fn() };
+
+// Fix Audit M-02: NetWorthService's new TransactionsService dependency.
+const mockTransactions = { getAverageMonthlyExpense: jest.fn() };
 
 // ─── Helper data ──────────────────────────────────────────────────────────────
 
@@ -68,11 +72,13 @@ describe("NetWorthService", () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: CurrencyService, useValue: mockCurrency },
         { provide: EventEmitter2, useValue: mockEvents },
+        { provide: TransactionsService, useValue: mockTransactions },
       ],
     }).compile();
 
     service = module.get<NetWorthService>(NetWorthService);
     jest.clearAllMocks();
+    mockPrisma.netWorthSnapshot.findMany.mockResolvedValue([]);
     // Default: no household memberships — every pre-Phase-21 test below
     // exercises exactly the same single-user behavior as before.
     mockPrisma.householdMember.findMany.mockResolvedValue([]);
@@ -251,6 +257,71 @@ describe("NetWorthService", () => {
 
       expect(result.totalAssets.toNumber()).toBeCloseTo(1_800_000, 0);
       expect(result.netWorth.toNumber()).toBeCloseTo(1_200_000, 0);
+    });
+  });
+
+  // ─── getDashboardSummary / emergencyFundHealth (Fix Audit M-02) ───────────
+  // No test existed for this at all before this fix -- the currency-blind
+  // hardcoded /50000 bug shipped with zero coverage catching it.
+
+  describe("getDashboardSummary — emergencyFundHealth", () => {
+    function precomputedWithCash(cashValue: number, baseCurrency = "INR") {
+      return {
+        totalAssets: new Decimal(cashValue),
+        totalLiabilities: new Decimal(0),
+        netWorth: new Decimal(cashValue),
+        baseCurrency,
+        assetAllocation: [{ category: "CASH", valueInBase: cashValue, percentage: 100 }],
+        currencyExposure: [],
+        debtRatio: 0,
+      };
+    }
+
+    it("uses the real trailing-3-month expense average when expense history exists", async () => {
+      mockTransactions.getAverageMonthlyExpense.mockResolvedValue(20_000); // INR/month
+      const summary = await service.getDashboardSummary("user1", precomputedWithCash(100_000, "INR"));
+
+      // 100,000 cash / 20,000 avg monthly expense = 5 months
+      expect(summary.emergencyFundHealth).toBeCloseTo(5, 1);
+    });
+
+    it("caps emergencyFundHealth at 12 months even with a very large cash cushion", async () => {
+      mockTransactions.getAverageMonthlyExpense.mockResolvedValue(10_000);
+      const summary = await service.getDashboardSummary("user1", precomputedWithCash(10_000_000, "INR"));
+
+      expect(summary.emergencyFundHealth).toBe(12);
+    });
+
+    it("falls back to a CURRENCY-CONVERTED placeholder (not a bare 50000) when there is no expense history — the exact M-02 bug", async () => {
+      mockTransactions.getAverageMonthlyExpense.mockResolvedValue(null); // brand-new user, no transactions yet
+      // USD account, $2,607.50 cash -- the audit's own real repro case.
+      const summary = await service.getDashboardSummary("user1", precomputedWithCash(2_607.5, "USD"));
+
+      // mockCurrency converts INR->USD by /83.5, so the 50,000 INR
+      // placeholder becomes ~$598.80/month in this account's OWN currency --
+      // NOT the bare, currency-blind 50000 the pre-fix code divided by
+      // (which would have wrongly produced 2607.5/50000 ≈ 0.05, capped
+      // display as "0.1 months" -- the literal audit finding).
+      const expectedFallbackMonthlyExpense = 50_000 / 83.5;
+      const expectedHealth = Math.min(2_607.5 / expectedFallbackMonthlyExpense, 12);
+      expect(summary.emergencyFundHealth).toBeCloseTo(expectedHealth, 1);
+      expect(summary.emergencyFundHealth).toBeGreaterThan(3); // sanity: NOT the old ~0.05 bug value
+
+      // Confirm the placeholder was actually run through real currency
+      // conversion (INR -> USD), not silently left as a bare 50000.
+      const convertCall = mockCurrency.convert.mock.calls.find(
+        ([, from, to]: [Decimal, string, string]) => from === "INR" && to === "USD",
+      );
+      expect(convertCall).toBeDefined();
+      expect((convertCall![0] as Decimal).toNumber()).toBe(50_000);
+    });
+
+    it("returns 0 when there is no cash at all, regardless of expense data", async () => {
+      mockTransactions.getAverageMonthlyExpense.mockResolvedValue(15_000);
+      const summary = await service.getDashboardSummary("user1", precomputedWithCash(0, "INR"));
+
+      expect(summary.emergencyFundHealth).toBe(0);
+      expect(mockTransactions.getAverageMonthlyExpense).not.toHaveBeenCalled();
     });
   });
 });

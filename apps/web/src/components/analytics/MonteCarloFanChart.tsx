@@ -5,14 +5,9 @@ import dynamic from "next/dynamic";
 import type { EChartsOption } from "echarts";
 import { RefreshCw } from "lucide-react";
 import type { MonteCarloResult } from "@/hooks/useAnalytics";
+import { formatCurrency } from "@/lib/format";
 
 const ReactECharts = dynamic(() => import("echarts-for-react"), { ssr: false });
-
-function formatCurrency(v: number) {
-  if (Math.abs(v) >= 10_000_000) return `₹${(v / 10_000_000).toFixed(2)}Cr`;
-  if (Math.abs(v) >= 100_000) return `₹${(v / 100_000).toFixed(1)}L`;
-  return `₹${v.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
-}
 
 export function MonteCarloFanChart({
   result,
@@ -21,6 +16,7 @@ export function MonteCarloFanChart({
   onRefresh,
   refreshing,
   periodUnit = "days",
+  currency,
 }: {
   result: MonteCarloResult;
   years: number;
@@ -33,6 +29,11 @@ export function MonteCarloFanChart({
    * MONTHS (12/year) instead. Governs the x-axis year-label conversion so
    * the axis doesn't mislabel one for the other. */
   periodUnit?: "days" | "months";
+  /** The account's real baseCurrency (ISO 4217, e.g. "USD"/"INR") — see
+   * Fix Audit B-01: this chart previously hardcoded ₹ formatting
+   * unconditionally, fabricating rupee labels on every non-INR account's
+   * real dollar/euro/etc. projections. */
+  currency: string;
 }) {
   const periodsPerYear = periodUnit === "months" ? 12 : 252;
   const tickEvery = periodUnit === "months" ? 12 : 63; // yearly ticks for months, quarterly for days (day charts run much longer)
@@ -63,11 +64,11 @@ export function MonteCarloFanChart({
         const i = arr[0]?.dataIndex ?? 0;
         return [
           `${periodUnit === "months" ? "Month" : "Day"} ${days[i]}`,
-          `95th: ${formatCurrency(p95[i] ?? 0)}`,
-          `75th: ${formatCurrency(p75[i] ?? 0)}`,
-          `Median: ${formatCurrency(p50[i] ?? 0)}`,
-          `25th: ${formatCurrency(p25[i] ?? 0)}`,
-          `5th: ${formatCurrency(p5[i] ?? 0)}`,
+          `95th: ${formatCurrency(p95[i] ?? 0, currency)}`,
+          `75th: ${formatCurrency(p75[i] ?? 0, currency)}`,
+          `Median: ${formatCurrency(p50[i] ?? 0, currency)}`,
+          `25th: ${formatCurrency(p25[i] ?? 0, currency)}`,
+          `5th: ${formatCurrency(p5[i] ?? 0, currency)}`,
         ].join("<br/>");
       },
     },
@@ -80,7 +81,7 @@ export function MonteCarloFanChart({
     },
     yAxis: {
       type: "value",
-      axisLabel: { color: "#8891A8", fontSize: 11, formatter: (v: number) => formatCurrency(v) },
+      axisLabel: { color: "#8891A8", fontSize: 11, formatter: (v: number) => formatCurrency(v, currency) },
       splitLine: { lineStyle: { color: "rgba(255,255,255,0.05)" } },
     },
     series: [
@@ -140,9 +141,9 @@ export function MonteCarloFanChart({
       <ReactECharts option={option} style={{ height: 340 }} notMerge />
 
       <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap", marginTop: "1rem", paddingTop: "1rem", borderTop: "1px solid var(--color-border-glass)" }}>
-        <StatBlock label="Median outcome" value={formatCurrency(result.finalValueStats.mean)} />
-        <StatBlock label="Best case (max)" value={formatCurrency(result.finalValueStats.max)} />
-        <StatBlock label="Worst case (min)" value={formatCurrency(result.finalValueStats.min)} />
+        <StatBlock label="Median outcome" value={formatCurrency(result.finalValueStats.mean, currency)} />
+        <StatBlock label="Best case (max)" value={formatCurrency(result.finalValueStats.max, currency)} />
+        <StatBlock label="Worst case (min)" value={formatCurrency(result.finalValueStats.min, currency)} />
       </div>
 
       <style jsx>{`

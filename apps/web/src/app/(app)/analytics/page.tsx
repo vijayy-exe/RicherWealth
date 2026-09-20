@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { useAllocation, useRiskMetrics, useCorrelationMatrix, useMonteCarlo, useRefreshMonteCarlo, isInsufficientData, type MonteCarloResult, type InsufficientData } from "@/hooks/useAnalytics";
+import { useDashboard } from "@/hooks/useDashboard";
 import { AllocationBreakdown } from "@/components/analytics/AllocationBreakdown";
 import { RiskMetricsCard, RiskMetricsEmptyState } from "@/components/analytics/RiskMetricsCard";
 import { CorrelationHeatmap, CorrelationEmptyState } from "@/components/analytics/CorrelationHeatmap";
@@ -25,12 +26,19 @@ export default function AnalyticsPage() {
   const [benchmark] = useState<{ ticker: string; label: string }>({ ticker: "SPY", label: "S&P 500 (SPY)" });
   const [refreshing, setRefreshing] = useState(false);
 
+  const dashboard = useDashboard();
   const allocation = useAllocation();
   const riskMetrics = useRiskMetrics(benchmark.ticker);
   const correlation = useCorrelationMatrix();
   const monteCarlo = useMonteCarlo(years);
   const refreshMonteCarlo = useRefreshMonteCarlo();
   const queryClient = useQueryClient();
+
+  // Fix Audit B-01: this page never fetched the account's real baseCurrency
+  // at all -- MonteCarloFanChart and AllocationBreakdown both hardcoded ₹
+  // (or, for AllocationBreakdown, a bare unlabeled number) regardless of
+  // what currency the account is actually denominated in.
+  const currency = dashboard.data?.baseCurrency ?? "INR";
 
   async function handleRefreshMonteCarlo() {
     setRefreshing(true);
@@ -63,7 +71,7 @@ export default function AnalyticsPage() {
       ) : allocation.isError ? (
         <ErrorCard message={(allocation.error as Error).message} />
       ) : allocation.data && allocation.data.totalValue > 0 ? (
-        <AllocationBreakdown report={allocation.data} />
+        <AllocationBreakdown report={allocation.data} currency={currency} />
       ) : (
         <EmptyPortfolioCard />
       )}
@@ -103,6 +111,7 @@ export default function AnalyticsPage() {
           onYearsChange={setYears}
           onRefresh={handleRefreshMonteCarlo}
           refreshing={refreshing}
+          currency={currency}
         />
       ) : (
         <MonteCarloEmptyState reason={(monteCarlo.data as InsufficientData | undefined)?.reason ?? "Not enough historical data to project forward yet."} />

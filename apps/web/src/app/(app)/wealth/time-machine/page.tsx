@@ -6,10 +6,7 @@ import { useDashboard } from "@/hooks/useDashboard";
 import { useWealthTimeline, usePastState, useProjectForward } from "@/hooks/useWealth";
 import { TrendChart } from "@/components/dashboard/TrendChart";
 import { MonteCarloFanChart, MonteCarloLoadingState, MonteCarloEmptyState } from "@/components/analytics/MonteCarloFanChart";
-
-function formatCurrency(v: number, currency: string) {
-  return new Intl.NumberFormat(undefined, { style: "currency", currency, maximumFractionDigits: 0 }).format(v);
-}
+import { formatCurrency } from "@/lib/format";
 
 const inputStyle: React.CSSProperties = {
   background: "var(--color-bg-input)", color: "var(--color-text-primary)",
@@ -143,6 +140,7 @@ export default function TimeMachinePage() {
           onRefresh={() => projection.refetch()}
           refreshing={projection.isFetching}
           periodUnit="months"
+          currency={currency}
         />
       ) : null}
     </div>

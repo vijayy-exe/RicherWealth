@@ -4,6 +4,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend, Treemap } from "recharts";
 import type { AllocationDimension, AllocationReport } from "@/hooks/useAnalytics";
+import { formatCurrency } from "@/lib/format";
 
 const DIMENSION_LABELS: Record<string, string> = {
   assetClass: "Asset Class",
@@ -18,11 +19,20 @@ const PALETTE = [
   "#38BDF8", "#FB923C", "#34D399", "#F472B6", "#94A3B8",
 ];
 
-function formatCompact(value: number) {
-  if (value >= 10_000_000) return `${(value / 10_000_000).toFixed(1)}Cr`;
-  if (value >= 100_000) return `${(value / 100_000).toFixed(1)}L`;
-  if (value >= 1000) return `${(value / 1000).toFixed(1)}K`;
-  return value.toFixed(0);
+// Fix Audit B-01 follow-on: this used to return a BARE number with no
+// currency symbol at all (not even mislabeled as ₹ -- just "5.2L"/"2607"),
+// and Lakh/Crore/K abbreviations regardless of the account's real currency
+// convention. INR keeps its Lakh/Crore abbreviation (correct there); every
+// other currency now goes through the same shared Intl.NumberFormat
+// formatter every other fixed chart in this pass uses, with the currency
+// symbol actually present.
+function formatCompact(value: number, currency: string) {
+  if (currency === "INR") {
+    if (value >= 10_000_000) return `₹${(value / 10_000_000).toFixed(1)}Cr`;
+    if (value >= 100_000) return `₹${(value / 100_000).toFixed(1)}L`;
+    return `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+  }
+  return formatCurrency(value, currency);
 }
 
 function DiversificationBadge({ score }: { score: number }) {
@@ -43,7 +53,15 @@ function DiversificationBadge({ score }: { score: number }) {
   );
 }
 
-const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ name: string; payload: { label: string; value: number; weight: number } }> }) => {
+const CustomTooltip = ({
+  active,
+  payload,
+  currency,
+}: {
+  active?: boolean;
+  payload?: Array<{ name: string; payload: { label: string; value: number; weight: number } }>;
+  currency: string;
+}) => {
   if (!active || !payload?.length) return null;
   const item = payload[0]!.payload;
   return (
@@ -54,13 +72,13 @@ const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: Array<
       }}
     >
       <p style={{ fontSize: "0.8125rem", fontWeight: 700, color: "var(--color-text-primary)", marginBottom: 4 }}>{item.label}</p>
-      <p style={{ fontSize: "0.875rem", color: "var(--color-accent)", fontWeight: 600 }}>{formatCompact(item.value)}</p>
+      <p style={{ fontSize: "0.875rem", color: "var(--color-accent)", fontWeight: 600 }}>{formatCompact(item.value, currency)}</p>
       <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)" }}>{(item.weight * 100).toFixed(1)}% of portfolio</p>
     </div>
   );
 };
 
-function DimensionChart({ dim, view }: { dim: AllocationDimension; view: "pie" | "treemap" }) {
+function DimensionChart({ dim, view, currency }: { dim: AllocationDimension; view: "pie" | "treemap"; currency: string }) {
   const data = dim.groups.map((g) => ({ ...g, name: g.label }));
 
   if (view === "treemap") {
@@ -77,7 +95,7 @@ function DimensionChart({ dim, view }: { dim: AllocationDimension; view: "pie" |
           {data.map((_, i) => (
             <Cell key={i} fill={PALETTE[i % PALETTE.length]} />
           ))}
-          <Tooltip content={<CustomTooltip />} />
+          <Tooltip content={<CustomTooltip currency={currency} />} />
         </Treemap>
       </ResponsiveContainer>
     );
@@ -101,14 +119,14 @@ function DimensionChart({ dim, view }: { dim: AllocationDimension; view: "pie" |
             <Cell key={i} fill={PALETTE[i % PALETTE.length]} stroke="transparent" />
           ))}
         </Pie>
-        <Tooltip content={<CustomTooltip />} />
+        <Tooltip content={<CustomTooltip currency={currency} />} />
         <Legend formatter={(value) => <span style={{ fontSize: "0.75rem", color: "var(--color-text-secondary)" }}>{value}</span>} />
       </PieChart>
     </ResponsiveContainer>
   );
 }
 
-export function AllocationBreakdown({ report }: { report: AllocationReport }) {
+export function AllocationBreakdown({ report, currency }: { report: AllocationReport; currency: string }) {
   const dimensions = Object.keys(report.byDimension);
   const [activeDim, setActiveDim] = useState(dimensions[0] ?? "assetClass");
   const [view, setView] = useState<"pie" | "treemap">("pie");
@@ -167,7 +185,7 @@ export function AllocationBreakdown({ report }: { report: AllocationReport }) {
 
       {active && active.groups.length > 0 ? (
         <>
-          <DimensionChart dim={active} view={view} />
+          <DimensionChart dim={active} view={view} currency={currency} />
           <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", textAlign: "center", marginTop: "0.5rem" }}>
             {DIMENSION_LABELS[activeDim] ?? activeDim} diversification: {active.diversificationScore.toFixed(0)}/100
           </p>

@@ -2,6 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { EventEmitter2 } from "@nestjs/event-emitter";
 import { PrismaService } from "../prisma/prisma.service";
 import { CurrencyService } from "../forex/currency.service";
+import { TransactionsService } from "../transactions/transactions.service";
 import Decimal from "decimal.js";
 
 export interface NetWorthResult {
@@ -64,6 +65,7 @@ export class NetWorthService {
     private readonly prisma: PrismaService,
     private readonly forex: CurrencyService,
     private readonly events: EventEmitter2,
+    private readonly transactions: TransactionsService,
   ) {}
 
   // ─── Core Calculation ─────────────────────────────────────────────────────
@@ -337,10 +339,27 @@ export class NetWorthService {
       this.getTrendSnapshots(userId),
     ]);
 
-    // Emergency fund health: (cash assets) / (estimated monthly expenses)
-    // Phase 2 placeholder: 3 months if cash > 0, else 0
+    // Emergency fund health: (cash assets) / (estimated monthly expenses).
+    // Fix Audit M-02: this used to unconditionally divide by a bare 50000
+    // regardless of the account's currency -- a real USD account with
+    // $2,607.50 cash rendered as "0.1 months," reading as broken. Now uses
+    // the real trailing-3-month expense average (Phase 10, DashboardResolver
+    // already computed this correctly for the GraphQL dashboard query but
+    // this method itself -- also called directly by AI reports, RAG
+    // indexing, and PDF reports, none of which went through that resolver's
+    // override -- never did). Falls back to the old placeholder, now
+    // properly currency-converted via the real forex rate rather than a
+    // bare constant, only when there's no expense history yet.
     const cashValue = current.assetAllocation.find((a) => a.category === "CASH")?.valueInBase ?? 0;
-    const emergencyFundHealth = cashValue > 0 ? Math.min(cashValue / 50000, 12) : 0; // Simplified
+    let emergencyFundHealth = 0;
+    if (cashValue > 0) {
+      const avgMonthlyExpense = await this.transactions.getAverageMonthlyExpense(userId, 3);
+      const monthlyExpenseEstimate =
+        avgMonthlyExpense && avgMonthlyExpense > 0
+          ? avgMonthlyExpense
+          : (await this.forex.convert(new Decimal(50_000), "INR", current.baseCurrency)).toNumber();
+      emergencyFundHealth = monthlyExpenseEstimate > 0 ? Math.min(cashValue / monthlyExpenseEstimate, 12) : 0;
+    }
 
     return {
       totalNetWorth: current.netWorth.toNumber(),

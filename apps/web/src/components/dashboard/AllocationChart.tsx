@@ -9,6 +9,7 @@ import {
   ResponsiveContainer,
   Legend,
 } from "recharts";
+import { formatCurrency } from "@/lib/format";
 
 interface AllocationItem {
   category: string;
@@ -51,6 +52,13 @@ function formatINR(value: number) {
   return `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
 }
 
+// Fix Audit B-01 follow-on: the non-INR branch below used to fall back to
+// `value.toFixed(0)` -- a bare, unlabeled number with no currency symbol at
+// all (e.g. "2607" instead of "$2,607") for every USD/EUR/etc. account.
+// formatINR's Lakh/Crore abbreviation stays INR-only by design (it's the
+// correct convention there); non-INR now goes through the same shared
+// Intl.NumberFormat formatter every other fixed chart in this pass uses.
+
 const CustomTooltip = ({
   active,
   payload,
@@ -77,7 +85,7 @@ const CustomTooltip = ({
         {label}
       </p>
       <p style={{ fontSize: "0.875rem", color: "var(--color-accent)", fontWeight: 600 }}>
-        {currency === "INR" ? formatINR(item.payload.valueInBase) : item.payload.valueInBase.toFixed(0)}
+        {currency === "INR" ? formatINR(item.payload.valueInBase) : formatCurrency(item.payload.valueInBase, currency)}
       </p>
       <p style={{ fontSize: "0.75rem", color: "var(--color-text-muted)" }}>
         {item.payload.percentage.toFixed(1)}% of portfolio

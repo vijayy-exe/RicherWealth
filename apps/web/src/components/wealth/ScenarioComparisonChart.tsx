@@ -4,14 +4,9 @@ import { motion } from "framer-motion";
 import dynamic from "next/dynamic";
 import type { EChartsOption } from "echarts";
 import type { ScenarioSimulationResult } from "@/hooks/useWealth";
+import { formatCurrency } from "@/lib/format";
 
 const ReactECharts = dynamic(() => import("echarts-for-react"), { ssr: false });
-
-function formatCurrency(v: number) {
-  if (Math.abs(v) >= 10_000_000) return `₹${(v / 10_000_000).toFixed(2)}Cr`;
-  if (Math.abs(v) >= 100_000) return `₹${(v / 100_000).toFixed(1)}L`;
-  return `₹${v.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
-}
 
 /**
  * Overlays the baseline (no-shock) median path against the chosen
@@ -20,7 +15,15 @@ function formatCurrency(v: number) {
  * visibly, immediately different lines on the same portfolio (the literal
  * acceptance criterion for this feature).
  */
-export function ScenarioComparisonChart({ result }: { result: ScenarioSimulationResult }) {
+export function ScenarioComparisonChart({
+  result,
+  currency,
+}: {
+  result: ScenarioSimulationResult;
+  /** The account's real baseCurrency — see Fix Audit B-01: this chart
+   * shared MonteCarloFanChart's same hardcoded-₹ bug, verbatim. */
+  currency: string;
+}) {
   const months = Array.from({ length: result.horizonMonths + 1 }, (_, i) => i);
   const baseP50 = result.baseline.percentiles["50"] ?? result.baseline.mean;
   const p5 = result.scenario.percentiles["5"] ?? [];
@@ -44,7 +47,7 @@ export function ScenarioComparisonChart({ result }: { result: ScenarioSimulation
       formatter: (params) => {
         const arr = params as unknown as Array<{ dataIndex: number }>;
         const i = arr[0]?.dataIndex ?? 0;
-        return [`Month ${months[i]}`, `Baseline: ${formatCurrency(baseP50[i] ?? 0)}`, `Scenario: ${formatCurrency(p50[i] ?? 0)}`].join("<br/>");
+        return [`Month ${months[i]}`, `Baseline: ${formatCurrency(baseP50[i] ?? 0, currency)}`, `Scenario: ${formatCurrency(p50[i] ?? 0, currency)}`].join("<br/>");
       },
     },
     xAxis: {
@@ -56,7 +59,7 @@ export function ScenarioComparisonChart({ result }: { result: ScenarioSimulation
     },
     yAxis: {
       type: "value",
-      axisLabel: { color: "#8891A8", fontSize: 11, formatter: (v: number) => formatCurrency(v) },
+      axisLabel: { color: "#8891A8", fontSize: 11, formatter: (v: number) => formatCurrency(v, currency) },
       splitLine: { lineStyle: { color: "rgba(255,255,255,0.05)" } },
     },
     series: [
@@ -77,11 +80,11 @@ export function ScenarioComparisonChart({ result }: { result: ScenarioSimulation
       </h3>
       <ReactECharts option={option} style={{ height: 340 }} notMerge />
       <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap", marginTop: "1rem", paddingTop: "1rem", borderTop: "1px solid var(--color-border-glass)" }}>
-        <StatBlock label="Baseline median outcome" value={formatCurrency(result.baseline.finalValueStats.mean)} />
-        <StatBlock label="Scenario median outcome" value={formatCurrency(result.scenario.finalValueStats.mean)} />
+        <StatBlock label="Baseline median outcome" value={formatCurrency(result.baseline.finalValueStats.mean, currency)} />
+        <StatBlock label="Scenario median outcome" value={formatCurrency(result.scenario.finalValueStats.mean, currency)} />
         <StatBlock
           label="Difference vs. baseline"
-          value={`${scenarioDelta >= 0 ? "+" : ""}${formatCurrency(scenarioDelta)} (${scenarioDeltaPct >= 0 ? "+" : ""}${scenarioDeltaPct.toFixed(1)}%)`}
+          value={`${scenarioDelta >= 0 ? "+" : ""}${formatCurrency(scenarioDelta, currency)} (${scenarioDeltaPct >= 0 ? "+" : ""}${scenarioDeltaPct.toFixed(1)}%)`}
           color={scenarioDelta >= 0 ? "var(--color-gain)" : "var(--color-loss)"}
         />
       </div>
