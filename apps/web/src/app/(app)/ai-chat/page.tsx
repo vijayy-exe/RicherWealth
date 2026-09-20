@@ -7,6 +7,7 @@ import {
   useAiConversations,
   useAiConversationMessages,
   useInvalidateAiConversations,
+  useInvalidateAiConversationMessages,
   streamChatMessage,
   type AiMessageRow,
   type RagSource,
@@ -99,10 +100,11 @@ function MessageBubble({ message }: { message: DisplayMessage }) {
 export default function AiChatPage() {
   const { data: conversations, isLoading: loadingConversations } = useAiConversations();
   const invalidateConversations = useInvalidateAiConversations();
+  const invalidateConversationMessages = useInvalidateAiConversationMessages();
   const reindex = useReindexMyData();
 
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
-  const { data: persistedMessages, refetch: refetchMessages } = useAiConversationMessages(activeConversationId);
+  const { data: persistedMessages } = useAiConversationMessages(activeConversationId);
 
   // Only ever holds the CURRENT in-flight exchange (a just-sent question and
   // its streaming reply) -- not a synced copy of persistedMessages. Once a
@@ -161,7 +163,10 @@ export default function AiChatPage() {
         setDraftMessages((prev) => prev.map((m) => (m.id === assistantMsgId ? { ...m, streaming: false, modelUsed, ragSources } : m)));
         setIsStreaming(false);
         invalidateConversations();
-        void refetchMessages().then(() => setDraftMessages([]));
+        // Always refetch by the id the backend actually returned, not
+        // `activeConversationId` -- for a brand-new conversation that's
+        // still `null` in this closure (see B-03 comment on the hook).
+        void invalidateConversationMessages(conversationId).then(() => setDraftMessages([]));
       },
       (message) => {
         setStreamError(message);

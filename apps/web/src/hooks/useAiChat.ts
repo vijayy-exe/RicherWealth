@@ -53,10 +53,18 @@ export function useAiConversations() {
   });
 }
 
+function messagesQueryKey(conversationId: string) {
+  return ["ai", "conversations", conversationId, "messages"] as const;
+}
+
+function fetchMessages(conversationId: string): Promise<AiMessageRow[]> {
+  return authedFetch(`/ai/chat/conversations/${conversationId}/messages`);
+}
+
 export function useAiConversationMessages(conversationId: string | null) {
   return useQuery<AiMessageRow[]>({
-    queryKey: ["ai", "conversations", conversationId, "messages"],
-    queryFn: () => authedFetch(`/ai/chat/conversations/${conversationId}/messages`),
+    queryKey: conversationId ? messagesQueryKey(conversationId) : ["ai", "conversations", null, "messages"],
+    queryFn: () => fetchMessages(conversationId as string),
     enabled: !!conversationId,
   });
 }
@@ -69,6 +77,36 @@ export function useInvalidateAiConversations() {
     void qc.invalidateQueries({ queryKey: ["ai", "conversations"] });
     void qc.refetchQueries({ queryKey: ["ai", "conversations"] });
   };
+}
+
+/**
+ * Fix Audit B-03: loads and caches messages for a SPECIFIC conversation id,
+ * addressed directly through the query client -- not through a `refetch`
+ * closure returned by `useAiConversationMessages`, and not through
+ * `invalidateQueries`/`refetchQueries`. Two distinct bugs, both traced live:
+ *
+ * 1. That `refetch` closure is bound to whatever `conversationId` the hook
+ *    was called with at render time; for a brand-new conversation that's
+ *    `null` (nothing selected yet), so calling it after the first reply
+ *    streams in refetches the wrong (null-keyed) query.
+ * 2. Even addressed at the correct id, `invalidateQueries`/`refetchQueries`
+ *    only act on a query that already has an observer mounted (active) or
+ *    has been fetched before. A brand-new conversation's messages query has
+ *    neither yet -- `activeConversationId` only becomes that id, mounting
+ *    the hook, on the NEXT render, which hasn't happened yet when this runs
+ *    -- so both calls silently find nothing to do and resolve immediately,
+ *    and the caller's "clear the draft now that real data has loaded"
+ *    logic fires before any real data exists. Confirmed live: the panel
+ *    still snapped to empty with only the first fix applied.
+ *
+ * `fetchQuery` sidesteps both: it performs a real fetch unconditionally and
+ * writes the result into the cache under the right key, so by the time this
+ * resolves the soon-to-mount `useAiConversationMessages(realId)` already has
+ * data waiting for it -- no dependent second fetch, no empty-window race.
+ */
+export function useInvalidateAiConversationMessages() {
+  const qc = useQueryClient();
+  return (conversationId: string) => qc.fetchQuery({ queryKey: messagesQueryKey(conversationId), queryFn: () => fetchMessages(conversationId) });
 }
 
 export type StreamEvent =

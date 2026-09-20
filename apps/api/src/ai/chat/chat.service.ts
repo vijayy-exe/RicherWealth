@@ -2,8 +2,32 @@ import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { RetrievalService } from "../rag/retrieval.service";
 import { LlmOrchestratorService } from "../llm/llm-orchestrator.service";
+import { NetWorthService, type DashboardSummary } from "../../net-worth/net-worth.service";
 import type { LlmMessage } from "../llm/llm-provider.interface";
 import type { RetrievedChunk } from "../rag/embedding.repository";
+
+// Fix Audit B-02: diagnosed live against the real RAG pipeline (real
+// pgvector retrieval, real indexed data, real system prompt) — confirmed
+// the net-worth figure IS retrieved correctly (top chunk, 64% relevance),
+// so this is the plan's second branch ("model-capability ceiling"), not a
+// retrieval bug. Per the plan's own reasoning, a purely factual question
+// with one authoritative source ("what is my net worth") doesn't need an
+// LLM to reason over unstructured context at all — route it straight to
+// NetWorthService and skip retrieval+LLM entirely, so the answer is exact
+// and doesn't depend on any particular model's instruction-following.
+const FACTUAL_QUERY_MATCHERS: Array<{ test: RegExp; answer: (s: DashboardSummary) => string }> = [
+  {
+    test: /\bnet[\s-]?worth\b/i,
+    answer: (s) => `Your current net worth is ${s.totalNetWorth.toFixed(2)} ${s.baseCurrency}.`,
+  },
+  {
+    test: /\bcash\s*(balance|value|holdings?|position)\b|\bhow much cash\b/i,
+    answer: (s) => {
+      const cash = s.assetAllocation.find((a) => a.category === "CASH")?.valueInBase ?? 0;
+      return `Your current cash balance is ${cash.toFixed(2)} ${s.baseCurrency}.`;
+    },
+  },
+];
 
 const SYSTEM_PROMPT = `You are the RicherWealth AI Analyst, built into a personal wealth management app.
 
@@ -23,6 +47,7 @@ export class ChatService {
     private readonly prisma: PrismaService,
     private readonly retrieval: RetrievalService,
     private readonly orchestrator: LlmOrchestratorService,
+    private readonly netWorth: NetWorthService,
   ) {}
 
   async getOrCreateConversation(userId: string, conversationId?: string): Promise<string> {
@@ -64,6 +89,17 @@ export class ChatService {
       data: { conversationId, role: "USER", content: userMessage },
     });
 
+    const factualMatch = FACTUAL_QUERY_MATCHERS.find((m) => m.test.test(userMessage));
+    if (factualMatch) {
+      const summary = await this.netWorth.getDashboardSummary(userId);
+      const answer = factualMatch.answer(summary);
+      yield { type: "chunk", text: answer };
+      await this.persistReply(conversationId, answer, "rules-engine:net-worth-lookup", []);
+      await this.titleIfNew(conversationId, userMessage);
+      yield { type: "done", modelUsed: "rules-engine:net-worth-lookup", ragSources: [] };
+      return;
+    }
+
     const ragChunks = await this.retrieval.retrieve(userId, userMessage, 8);
     const history = await this.prisma.aiMessage.findMany({
       where: { conversationId },
@@ -84,17 +120,35 @@ export class ChatService {
       yield { type: "chunk", text: piece.text };
     }
 
+    // The local Ollama fallback can silently stream zero content chunks
+    // (e.g. under host memory pressure) without ever throwing — observed
+    // live while diagnosing B-02. Persisting an empty assistant message in
+    // that case looks like a failed send (the exact B-03 symptom) rather
+    // than a model failure, so surface it honestly instead.
+    if (!assembled) {
+      assembled = "I couldn't generate a response just now. Please try again in a moment.";
+      yield { type: "chunk", text: assembled };
+    }
+
+    await this.persistReply(conversationId, assembled, modelUsed, ragChunks);
+    await this.titleIfNew(conversationId, userMessage);
+
+    yield { type: "done", modelUsed, ragSources: ragChunks };
+  }
+
+  private async persistReply(conversationId: string, content: string, modelUsed: string, ragSources: RetrievedChunk[]): Promise<void> {
     await this.prisma.aiMessage.create({
       data: {
         conversationId,
         role: "ASSISTANT",
-        content: assembled,
+        content,
         modelUsed,
-        ragSources: ragChunks.map((c) => ({ sourceType: c.sourceType, sourceId: c.sourceId, similarity: c.similarity })) as never,
+        ragSources: ragSources.map((c) => ({ sourceType: c.sourceType, sourceId: c.sourceId, similarity: c.similarity })) as never,
       },
     });
+  }
 
-    // Title the conversation from its first exchange, best-effort.
+  private async titleIfNew(conversationId: string, userMessage: string): Promise<void> {
     const conv = await this.prisma.aiConversation.findUnique({ where: { id: conversationId } });
     if (conv?.title === "New chat") {
       await this.prisma.aiConversation.update({
@@ -102,7 +156,5 @@ export class ChatService {
         data: { title: userMessage.slice(0, 60) },
       });
     }
-
-    yield { type: "done", modelUsed, ragSources: ragChunks };
   }
 }

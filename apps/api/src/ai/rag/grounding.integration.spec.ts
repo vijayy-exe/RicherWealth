@@ -49,18 +49,29 @@ async function isOllamaReachable(): Promise<boolean> {
 describe("RAG grounding (AC1 — no hallucinated numbers)", () => {
   const prisma = new PrismaService();
   const identityForex = { convert: (amount: Decimal) => Promise.resolve(amount), getRate: () => Promise.resolve(new Decimal(1)) };
-  const netWorth = new NetWorthService(prisma, identityForex as never, new EventEmitter2());
+  // getAverageMonthlyExpense: Fix Audit M-02 gave NetWorthService a new
+  // required TransactionsService dependency (real trailing-3-month
+  // expense average for emergencyFundHealth, replacing a currency-blind
+  // hardcoded placeholder) -- same "constructor gained a new required
+  // dependency" break this file's own Phase 21 history already documents
+  // for AssetsService/HouseholdAccessService/AuditService above. `null`
+  // (honestly: no seeded transaction history) makes NetWorthService fall
+  // through to its own currency-converted fallback, not a fabricated average.
+  const emptyTransactions = { findAll: () => Promise.resolve([]), getAverageMonthlyExpense: () => Promise.resolve(null) };
+  const netWorth = new NetWorthService(prisma, identityForex as never, new EventEmitter2(), emptyTransactions as never);
   const householdAccess = new HouseholdAccessService(prisma);
   const audit = new AuditService(prisma);
   const assets = new AssetsService(prisma, netWorth, new EventEmitter2(), identityForex as never, householdAccess, audit);
-  const emptyTransactions = { findAll: () => Promise.resolve([]) };
   const emptyGoals = { findAll: () => Promise.resolve([]) };
   const embeddingService = new EmbeddingService(configStub);
   const embeddingRepo = new EmbeddingRepository(prisma);
   const indexing = new IndexingService(prisma, assets, emptyTransactions as never, emptyGoals as never, netWorth, embeddingService, embeddingRepo);
   const retrieval = new RetrievalService(embeddingService, embeddingRepo);
   const orchestrator = new LlmOrchestratorService(new ClaudeProvider(configStub), new OllamaProvider(configStub));
-  const chat = new ChatService(prisma, retrieval, orchestrator);
+  // Fix Audit B-02: ChatService now takes NetWorthService directly (routes
+  // purely factual net-worth/cash questions around retrieval+LLM entirely).
+  // Reuses the same `netWorth` instance already constructed above.
+  const chat = new ChatService(prisma, retrieval, orchestrator, netWorth);
 
   let userId: string;
   let assetId: string;
