@@ -29,7 +29,13 @@ const KNOWN_ABS_CHANGE = KNOWN_CURRENT_ASSET_VALUE - KNOWN_PAST_NET_WORTH;
 describe("AiReportService (AC2 — daily report off a known net worth delta)", () => {
   const prisma = new PrismaService();
   const identityForex = { convert: (amount: Decimal) => Promise.resolve(amount), getRate: () => Promise.resolve(new Decimal(1)) };
-  const netWorth = new NetWorthService(prisma, identityForex as never, new EventEmitter2());
+  // Fix Audit M-02: NetWorthService gained a new required TransactionsService
+  // dependency (real trailing-3-month expense average for
+  // emergencyFundHealth) -- this test seeds no transactions, so `null` here
+  // is honest (falls through to NetWorthService's own currency-converted
+  // fallback), same pattern as grounding.integration.spec.ts.
+  const emptyTransactions = { getAverageMonthlyExpense: () => Promise.resolve(null) };
+  const netWorth = new NetWorthService(prisma, identityForex as never, new EventEmitter2(), emptyTransactions as never);
   const mockOrchestrator = { complete: jest.fn(), streamComplete: jest.fn() };
 
   let userId: string;
@@ -98,13 +104,22 @@ describe("AiReportService (AC2 — daily report off a known net worth delta)", (
 
     const { id } = await service.generateReport(userId, "DAILY");
     const report = await prisma.aiReport.findUniqueOrThrow({ where: { id } });
-    const computed = report.computedData as { netWorthDelta: { absChange: number; toValue: number; fromValue: number } };
+    const computed = report.computedData as { netWorthDelta: { absChange: number; toValue: number; fromValue: number }; periodStart: string; periodEnd: string };
 
     expect(computed.netWorthDelta.absChange).toBeCloseTo(KNOWN_ABS_CHANGE, 6);
     expect(computed.netWorthDelta.toValue).toBeCloseTo(KNOWN_CURRENT_ASSET_VALUE, 6);
     expect(computed.netWorthDelta.fromValue).toBeCloseTo(KNOWN_PAST_NET_WORTH, 6);
     expect(report.isLLMGenerated).toBe(true);
     expect(report.narrative).toBe("Mocked narrative.");
+
+    // Fix Audit B-04: computedData must carry real dates -- without them
+    // the LLM prompt has nothing to fill "week ending ___" with and reaches
+    // for the literal placeholder text "[Date]" instead.
+    expect(computed.periodStart).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(computed.periodEnd).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    const promptArg = mockOrchestrator.complete.mock.calls[0]?.[0]?.[0]?.content as string;
+    expect(promptArg).not.toContain("[Date]");
+    expect(promptArg).toContain(computed.periodEnd);
   });
 
   it("falls back to a real (non-LLM) template narrative when the LLM is unreachable, still with the real numbers", async () => {

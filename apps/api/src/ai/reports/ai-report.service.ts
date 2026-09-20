@@ -53,6 +53,12 @@ export class AiReportService {
     const computedData: Record<string, unknown> = {
       netWorthDelta: delta,
       periodDays: DAYS_BY_TYPE[type],
+      // Fix Audit B-04: without a real date in computedData, the LLM had
+      // nothing to fill "week ending ___" with and reached for the literal
+      // placeholder text "[Date]" -- give it the real, already-computed
+      // dates instead of leaving it to invent a fill-in.
+      periodStart: periodStart.toISOString().slice(0, 10),
+      periodEnd: periodEnd.toISOString().slice(0, 10),
     };
 
     if (type === "DAILY") {

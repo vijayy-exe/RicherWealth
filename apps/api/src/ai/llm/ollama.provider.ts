@@ -1,7 +1,19 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import axios from "axios";
+import pLimit from "p-limit";
 import type { LlmProvider, LlmMessage, LlmCompletionResult } from "./llm-provider.interface";
+
+// Fix Audit B-05: this is a single-slot local daemon -- the boot-time
+// report batch firing `.complete()` back-to-back for all 17 seeded users
+// loaded two Ollama models at once and hit a genuine Metal/GPU OOM
+// (kIOGPUCommandBufferCallbackErrorOutOfMemory), 305 consecutive failures.
+// The existing "empty response -> template fallback" behavior correctly
+// caught every one honestly (no fake numbers shown), but nothing paced how
+// many requests went out at once. A module-level limiter (not per-instance)
+// since OllamaProvider is only ever a single NestJS singleton per process,
+// but sharing at the module level makes that invariant explicit either way.
+const ollamaLimit = pLimit(2);
 
 /**
  * The real, zero-cost fallback — and, in THIS dev environment specifically,
@@ -39,19 +51,21 @@ export class OllamaProvider implements LlmProvider {
   }
 
   async complete(messages: LlmMessage[]): Promise<LlmCompletionResult> {
-    try {
-      const res = await axios.post(
-        `${this.baseUrl}/api/chat`,
-        { model: this.model, messages, stream: false },
-        { timeout: 60_000 },
-      );
-      const text = res.data?.message?.content ?? "";
-      if (!text) throw new Error("Ollama returned an empty response");
-      return { text, modelUsed: this.name };
-    } catch (err) {
-      this.logger.error(`Ollama completion failed: ${String(err)}`);
-      throw err;
-    }
+    return ollamaLimit(async () => {
+      try {
+        const res = await axios.post(
+          `${this.baseUrl}/api/chat`,
+          { model: this.model, messages, stream: false },
+          { timeout: 60_000 },
+        );
+        const text = res.data?.message?.content ?? "";
+        if (!text) throw new Error("Ollama returned an empty response");
+        return { text, modelUsed: this.name };
+      } catch (err) {
+        this.logger.error(`Ollama completion failed: ${String(err)}`);
+        throw err;
+      }
+    });
   }
 
   async *streamComplete(messages: LlmMessage[]): AsyncIterable<string> {
