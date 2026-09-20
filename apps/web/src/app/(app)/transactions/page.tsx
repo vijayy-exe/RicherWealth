@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { AgGridReact } from "ag-grid-react";
-import { ClientSideRowModelModule, type ColDef } from "ag-grid-community";
+import { AllCommunityModule, type ColDef } from "ag-grid-community";
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-quartz.css";
 
@@ -204,7 +204,7 @@ export default function TransactionsPage() {
       ) : (
         <div className="ag-theme-quartz-dark" style={{ height: Math.min(600, 56 + transactions.length * 48), width: "100%", borderRadius: "var(--radius-lg)", overflow: "hidden" }}>
           <AgGridReact
-            modules={[ClientSideRowModelModule]}
+            modules={[AllCommunityModule]} // Fix Audit S-02: see assets/page.tsx's comment
             theme="legacy"
             rowData={transactions}
             columnDefs={columnDefs}

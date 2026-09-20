@@ -5,13 +5,19 @@ import Link from "next/link";
 import { TrendingUp, Bitcoin, Home, Landmark, Coins, Wallet, Gem } from "lucide-react";
 import { IconBadge } from "@/components/ui/IconBadge";
 
+// Fix Audit M-01: these previously linked to `/assets/add?type=...`, a
+// route that doesn't exist -- the real add-asset flow is a modal on
+// `/assets` itself (component-local state, no query-param support), so
+// every one of these 404'd. Visually present but functionally dead is the
+// same gap the audit described as "no button." `/assets` is the documented
+// fallback fix (its own "+ Add Asset" button opens the real wizard).
 const QUICK_ADD = [
-  { icon: TrendingUp, label: "Stocks & ETFs", href: "/assets/add?type=STOCK" },
-  { icon: Bitcoin, label: "Cryptocurrency", href: "/assets/add?type=CRYPTO" },
-  { icon: Home, label: "Real Estate", href: "/assets/add?type=REAL_ESTATE" },
-  { icon: Landmark, label: "Mutual Funds", href: "/assets/add?type=MUTUAL_FUND" },
-  { icon: Coins, label: "Gold & Silver", href: "/assets/add?type=GOLD" },
-  { icon: Wallet, label: "Cash & Bank", href: "/assets/add?type=CASH" },
+  { icon: TrendingUp, label: "Stocks & ETFs", href: "/assets" },
+  { icon: Bitcoin, label: "Cryptocurrency", href: "/assets" },
+  { icon: Home, label: "Real Estate", href: "/assets" },
+  { icon: Landmark, label: "Mutual Funds", href: "/assets" },
+  { icon: Coins, label: "Gold & Silver", href: "/assets" },
+  { icon: Wallet, label: "Cash & Bank", href: "/assets" },
 ];
 
 export function EmptyState() {
@@ -85,7 +91,7 @@ export function EmptyState() {
       >
         {QUICK_ADD.map((item, i) => (
           <motion.div
-            key={item.href}
+            key={item.label}
             whileHover={{ scale: 1.04, y: -2 }}
             whileTap={{ scale: 0.97 }}
             transition={{ type: "spring", stiffness: 400, damping: 20 }}

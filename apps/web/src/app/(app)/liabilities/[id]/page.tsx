@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { AgGridReact } from "ag-grid-react";
-import { ClientSideRowModelModule, type ColDef } from "ag-grid-community";
+import { AllCommunityModule, type ColDef } from "ag-grid-community";
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-quartz.css";
 import {
@@ -380,7 +380,7 @@ function AmortizedLoanDetail({ liability }: { liability: LiabilityRow }) {
         <p style={sectionTitle}>Full Amortization Schedule</p>
         <div className="ag-theme-quartz-dark" style={{ height: 500, width: "100%", borderRadius: "var(--radius-lg)", overflow: "hidden" }}>
           <AgGridReact
-            modules={[ClientSideRowModelModule]}
+            modules={[AllCommunityModule]} // Fix Audit S-02: see assets/page.tsx's comment
             theme="legacy"
             rowData={scheduleResult.schedule}
             columnDefs={columnDefs}
@@ -480,7 +480,7 @@ function CreditCardDetail({ liability }: { liability: LiabilityRow }) {
             <p style={sectionTitle}>Minimum-Payment Projection</p>
             <div className="ag-theme-quartz-dark" style={{ height: 400, width: "100%", borderRadius: "var(--radius-lg)", overflow: "hidden" }}>
               <AgGridReact
-                modules={[ClientSideRowModelModule]}
+                modules={[AllCommunityModule]} // Fix Audit S-02: see assets/page.tsx's comment
                 theme="legacy"
                 rowData={payoff.months}
                 columnDefs={columnDefs}

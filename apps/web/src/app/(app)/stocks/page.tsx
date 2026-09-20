@@ -3,7 +3,7 @@
 import { useState, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { AgGridReact } from "ag-grid-react";
-import { ClientSideRowModelModule, type ColDef, type ICellRendererParams } from "ag-grid-community";
+import { AllCommunityModule, type ColDef, type ICellRendererParams } from "ag-grid-community";
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-quartz.css";
 
@@ -406,7 +406,7 @@ export default function StocksPage() {
                 }}
               >
                 <AgGridReact<HoldingRow>
-                  modules={[ClientSideRowModelModule]}
+                  modules={[AllCommunityModule]} // Fix Audit S-02: see assets/page.tsx's comment
                   theme="legacy"
                   rowData={holdings}
                   columnDefs={columnDefs}

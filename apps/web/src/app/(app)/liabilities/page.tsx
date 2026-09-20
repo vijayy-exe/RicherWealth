@@ -4,7 +4,7 @@ import { useState, useMemo } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { AgGridReact } from "ag-grid-react";
-import { ClientSideRowModelModule, type ColDef } from "ag-grid-community";
+import { AllCommunityModule, type ColDef } from "ag-grid-community";
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-quartz.css";
 
@@ -271,7 +271,7 @@ export default function LiabilitiesPage() {
       ) : (
         <div className="ag-theme-quartz-dark" style={{ height: Math.min(600, 56 + liabilities.length * 52), width: "100%", borderRadius: "var(--radius-lg)", overflow: "hidden" }}>
           <AgGridReact
-            modules={[ClientSideRowModelModule]}
+            modules={[AllCommunityModule]} // Fix Audit S-02: see assets/page.tsx's comment
             theme="legacy"
             rowData={liabilities}
             columnDefs={columnDefs}

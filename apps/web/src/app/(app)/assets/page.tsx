@@ -3,7 +3,7 @@
 import { useState, useCallback, useMemo, type FormEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { AgGridReact } from "ag-grid-react";
-import { ClientSideRowModelModule, type ColDef } from "ag-grid-community";
+import { AllCommunityModule, type ColDef } from "ag-grid-community";
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-quartz.css";
 
@@ -411,7 +411,12 @@ export default function AssetsPage() {
           style={{ height: Math.min(600, 56 + filteredAssets.length * 52), width: "100%", borderRadius: "var(--radius-lg)", overflow: "hidden" }}
         >
           <AgGridReact
-            modules={[ClientSideRowModelModule]}
+            // Fix Audit S-02: AG Grid's modular architecture threw
+            // "error #200 ... moduleName=ColumnFilter/CellStyle" -- only
+            // ClientSideRowModelModule was registered. AllCommunityModule
+            // is the officially recommended bundle for the free tier
+            // rather than hand-picking modules one error at a time.
+            modules={[AllCommunityModule]}
             theme="legacy"
             rowData={filteredAssets}
             columnDefs={columnDefs}
